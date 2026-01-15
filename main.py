@@ -17,6 +17,7 @@ import pickle
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "test-token-2026")
 MODELS_DIR = Path("models")
 DATA_DIR = Path("data")
+csv_path = DATA_DIR / "base_unificada.csv"
 
 # Variables globales
 MODELS = {}
