@@ -50,13 +50,13 @@ AUTH_TOKEN = os.getenv("AUTH_TOKEN", "test-token-2026")
 # Cargar modelos ML (7 algoritmos)
 MODELS = {}
 MODEL_FILES = {
-    "xgboost": "MEJOR_MODELO_XGBoost.joblib",
-    "random_forest": "Random_Forest.joblib",
-    "lightgbm": "LightGBM.joblib",
-    "gradient_boosting": "Gradient_Boosting.joblib",
-    "ridge": "Ridge.joblib",
-    "lasso": "Lasso.joblib",
-    "elasticnet": "ElasticNet.joblib"
+    "xgboost": "models/MEJOR_MODELO_XGBoost.joblib",
+    "random_forest": "models/Random_Forest.joblib",
+    "lightgbm": "models/LightGBM.joblib",
+    "gradient_boosting": "models/Gradient_Boosting.joblib",
+    "ridge": "models/Ridge.joblib",
+    "lasso": "models/Lasso.joblib",
+    "elasticnet": "models/ElasticNet.joblib"
 }
 
 # Cargar base de datos de pacientes (61 registros)
