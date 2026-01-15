@@ -1,12 +1,12 @@
 """
 Sistema de Predicción de Glucosa con Machine Learning + FHIR Compliance
 FastAPI Backend con 7 modelos ML y endpoints FHIR R4
-
+ 
 Autor: Sistema de IA
 Fecha: Enero 2026
 Versión: 2.0 (FHIR-compliant)
 """
-
+ 
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -18,11 +18,11 @@ from datetime import datetime
 import os
 from pathlib import Path
 import logging
-
+ 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+ 
 # Inicializar FastAPI
 app = FastAPI(
     title="Glucose ML Prediction API with FHIR",
@@ -31,7 +31,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
-
+ 
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
@@ -40,13 +40,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+ 
 # ==================== CONFIGURACIÓN ====================
-
+ 
 MODELS_DIR = Path("models")
 DATA_DIR = Path("data")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "test-token-2026")  # Token para MVP
-
+ 
 # Cargar modelos ML (7 algoritmos)
 MODELS = {}
 MODEL_FILES = {
@@ -58,12 +58,12 @@ MODEL_FILES = {
     "lasso": "Lasso.joblib",
     "elasticnet": "ElasticNet.joblib"
 }
-
+ 
 # Cargar base de datos de pacientes (61 registros)
 PATIENTS_DB = None
-
+ 
 # ==================== MODELOS PYDANTIC ====================
-
+ 
 class PredictionRequest(BaseModel):
     """Request para predicción (formato simple JSON)"""
     edad: int = Field(..., ge=0, le=120, description="Edad del paciente")
@@ -78,7 +78,7 @@ class PredictionRequest(BaseModel):
     tiene_hipertension: bool = Field(..., description="Diagnosticado con HTA")
     tiene_diabetes: bool = Field(..., description="Diagnosticado con DM")
     puntaje_findrisc: int = Field(..., ge=0, le=26, description="Puntaje FINDRISC")
-
+ 
 class PredictionResponse(BaseModel):
     """Response de predicción (formato simple JSON)"""
     glucosa_predicha: float
@@ -89,9 +89,9 @@ class PredictionResponse(BaseModel):
     rango_confianza: str
     modelo_usado: str
     recomendacion: str
-
+ 
 # ==================== MODELOS FHIR R4 ====================
-
+ 
 class FHIRPatient(BaseModel):
     """FHIR Patient Resource (R4)"""
     resourceType: str = "Patient"
@@ -100,7 +100,7 @@ class FHIRPatient(BaseModel):
     name: List[Dict[str, Any]]
     gender: str
     birthDate: Optional[str] = None
-    
+ 
 class FHIRObservation(BaseModel):
     """FHIR Observation Resource (R4)"""
     resourceType: str = "Observation"
@@ -110,12 +110,12 @@ class FHIRObservation(BaseModel):
     subject: Dict[str, Any]
     effectiveDateTime: str
     valueQuantity: Dict[str, Any]
-
+ 
 class FHIRPredictionRequest(BaseModel):
     """FHIR-compliant prediction request"""
     resourceType: str = "Parameters"
     parameter: List[Dict[str, Any]]
-
+ 
 class FHIRPredictionResponse(BaseModel):
     """FHIR-compliant prediction response"""
     resourceType: str = "Observation"
@@ -127,9 +127,9 @@ class FHIRPredictionResponse(BaseModel):
     valueQuantity: Dict[str, Any]
     interpretation: List[Dict[str, Any]]
     note: List[Dict[str, Any]]
-
+ 
 # ==================== AUTENTICACIÓN ====================
-
+ 
 async def verify_token(authorization: Optional[str] = Header(None)):
     """Verificar Bearer token"""
     if not authorization:
@@ -137,7 +137,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authorization header"
         )
-    
+ 
     try:
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
@@ -145,7 +145,7 @@ async def verify_token(authorization: Optional[str] = Header(None)):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid authentication scheme"
             )
-        
+ 
         if token != AUTH_TOKEN:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -156,13 +156,13 @@ async def verify_token(authorization: Optional[str] = Header(None)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization header format"
         )
-
+ 
 # ==================== FUNCIONES DE CARGA ====================
-
+ 
 def load_ml_models():
     """Cargar los 7 modelos ML desde disco"""
     global MODELS
-    
+ 
     for name, filename in MODEL_FILES.items():
         model_path = MODELS_DIR / filename
         try:
@@ -172,11 +172,11 @@ def load_ml_models():
             logger.warning(f"⚠️ Modelo {name} no encontrado en {model_path}")
         except Exception as e:
             logger.error(f"❌ Error cargando {name}: {str(e)}")
-
+ 
 def load_patients_database():
     """Cargar base de datos de pacientes desde CSV"""
     global PATIENTS_DB
-    
+ 
     csv_path = DATA_DIR / "base_unificada.csv"
     try:
         PATIENTS_DB = pd.read_csv(csv_path)
@@ -190,15 +190,15 @@ def load_patients_database():
             "Actividad_Fisica", "Consumo_Frutas", "Tiene_Hipertension", "Tiene_Diabetes",
             "Puntaje_FINDRISC", "Clasificacion_Riesgo", "Glucosa_Estimada_mgdL"
         ])
-
+ 
 # ==================== FUNCIONES DE PREDICCIÓN ====================
-
+ 
 def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
     """Realizar predicción con ensemble de 7 modelos"""
-    
+ 
     # Calcular IMC
     imc = data.peso / (data.talla ** 2)
-    
+ 
     # Preparar features para ML (ajustar según tu modelo entrenado)
     features = np.array([[
         data.edad,
@@ -215,11 +215,11 @@ def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
         1 if data.tiene_diabetes else 0,
         data.puntaje_findrisc
     ]])
-    
+ 
     # Realizar predicciones con todos los modelos disponibles
     predictions = []
     models_used = []
-    
+ 
     for name, model in MODELS.items():
         try:
             pred = model.predict(features)[0]
@@ -227,14 +227,14 @@ def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
             models_used.append(name)
         except Exception as e:
             logger.error(f"Error en modelo {name}: {str(e)}")
-    
+ 
     if not predictions:
         raise HTTPException(status_code=500, detail="No hay modelos disponibles")
-    
+ 
     # Ensemble: promedio de predicciones
     glucosa_predicha = float(np.mean(predictions))
     std_dev = float(np.std(predictions))
-    
+ 
     # Clasificar resultado
     if glucosa_predicha < 100:
         categoria = "Normal"
@@ -245,7 +245,7 @@ def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
     else:
         categoria = "Diabetes"
         nivel_riesgo = "Alto"
-    
+ 
     # Confianza basada en desviación estándar
     if std_dev < 5:
         confianza = "Alta"
@@ -253,18 +253,18 @@ def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
         confianza = "Media"
     else:
         confianza = "Baja"
-    
+ 
     # MAE estimado (ajustar según validación de tus modelos)
     mae = 8.2
-    
+ 
     # Rango de confianza (95% CI ≈ ±1.96*std)
     ic_lower = glucosa_predicha - 1.96 * std_dev
     ic_upper = glucosa_predicha + 1.96 * std_dev
     rango_confianza = f"{ic_lower:.1f} - {ic_upper:.1f} mg/dL"
-    
+ 
     # Generar recomendación
     recomendacion = generar_recomendacion(categoria, data.puntaje_findrisc)
-    
+ 
     return {
         "glucosa_predicha": round(glucosa_predicha, 1),
         "categoria": categoria,
@@ -276,20 +276,20 @@ def predict_glucose(data: PredictionRequest) -> Dict[str, Any]:
         "modelos": models_used,
         "recomendacion": recomendacion
     }
-
+ 
 def generar_recomendacion(categoria: str, findrisc: int) -> str:
     """Generar recomendación personalizada"""
     base = f"Categoría de glucosa: {categoria}. "
-    
+ 
     if categoria == "Normal":
         return base + "Mantener hábitos saludables. Controles anuales recomendados."
     elif categoria == "Prediabetes":
         return base + "Implementar cambios en estilo de vida. Consultar con médico. Controles cada 6 meses."
     else:
         return base + "Consultar urgentemente con endocrinólogo. Iniciar tratamiento médico."
-
+ 
 # ==================== ENDPOINTS LEGACY (mantener compatibilidad) ====================
-
+ 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -299,30 +299,30 @@ async def health_check():
         "models_loaded": len(MODELS),
         "patients_in_db": len(PATIENTS_DB) if PATIENTS_DB is not None else 0
     }
-
+ 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict_legacy(data: PredictionRequest):
     """Endpoint de predicción legacy (formato simple JSON)"""
     result = predict_glucose(data)
     return PredictionResponse(**result)
-
+ 
 # ==================== ENDPOINTS FHIR R4 ====================
-
+ 
 @app.get("/api/v1/patient/{patient_id}", dependencies=[Depends(verify_token)])
 async def get_patient_fhir(patient_id: str):
     """GET Patient resource (FHIR R4)"""
-    
+ 
     if PATIENTS_DB is None or PATIENTS_DB.empty:
         raise HTTPException(status_code=404, detail="Patient database not loaded")
-    
+ 
     # Buscar paciente por ID_Unico
     patient = PATIENTS_DB[PATIENTS_DB["ID_Unico"] == patient_id]
-    
+ 
     if patient.empty:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    
+ 
     patient = patient.iloc[0]
-    
+ 
     # Construir FHIR Patient resource
     fhir_patient = {
         "resourceType": "Patient",
@@ -338,27 +338,27 @@ async def get_patient_fhir(patient_id: str):
         "gender": "male" if patient.get("Sexo", "").upper() == "M" else "female",
         "birthDate": str(datetime.now().year - int(patient.get("Edad", 0)))[:4] if pd.notna(patient.get("Edad")) else None
     }
-    
+ 
     return fhir_patient
-
+ 
 @app.get("/api/v1/patient/{patient_id}/observations", dependencies=[Depends(verify_token)])
 async def get_patient_observations_fhir(patient_id: str):
     """GET Patient Observations (FHIR R4)"""
-    
+ 
     if PATIENTS_DB is None or PATIENTS_DB.empty:
         raise HTTPException(status_code=404, detail="Patient database not loaded")
-    
+ 
     patient = PATIENTS_DB[PATIENTS_DB["ID_Unico"] == patient_id]
-    
+ 
     if patient.empty:
         raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    
+ 
     patient = patient.iloc[0]
     timestamp = datetime.now().isoformat()
-    
+ 
     # Crear observaciones FHIR para cada métrica disponible
     observations = []
-    
+ 
     # Observación: Glucosa
     if pd.notna(patient.get("Glucosa_Estimada_mgdL")):
         observations.append({
@@ -381,7 +381,7 @@ async def get_patient_observations_fhir(patient_id: str):
                 "code": "mg/dL"
             }
         })
-    
+ 
     # Observación: IMC
     if pd.notna(patient.get("IMC")):
         observations.append({
@@ -404,7 +404,7 @@ async def get_patient_observations_fhir(patient_id: str):
                 "code": "kg/m2"
             }
         })
-    
+ 
     # Observación: FINDRISC Score
     if pd.notna(patient.get("Puntaje_FINDRISC")):
         observations.append({
@@ -428,24 +428,24 @@ async def get_patient_observations_fhir(patient_id: str):
                 "code": "{score}"
             }
         })
-    
+ 
     return {
         "resourceType": "Bundle",
         "type": "searchset",
         "total": len(observations),
         "entry": [{"resource": obs} for obs in observations]
     }
-
+ 
 @app.post("/api/v1/predictions", dependencies=[Depends(verify_token)])
 async def create_prediction_fhir(data: PredictionRequest):
     """POST Prediction in FHIR format"""
-    
+ 
     # Realizar predicción usando función existente
     result = predict_glucose(data)
-    
+ 
     timestamp = datetime.now().isoformat()
     prediction_id = f"prediction-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
+ 
     # Construir respuesta FHIR Observation
     fhir_observation = {
         "resourceType": "Observation",
@@ -512,16 +512,16 @@ async def create_prediction_fhir(data: PredictionRequest):
             }
         ]
     }
-    
+ 
     return fhir_observation
-
+ 
 @app.get("/api/v1/predictions/{patient_id}", dependencies=[Depends(verify_token)])
 async def get_predictions_history_fhir(patient_id: str):
     """GET Prediction history for patient (FHIR Bundle)"""
-    
+ 
     # En MVP, esto devuelve predicciones simuladas
     # En producción, conectar a base de datos de historial
-    
+ 
     return {
         "resourceType": "Bundle",
         "type": "searchset",
@@ -529,29 +529,29 @@ async def get_predictions_history_fhir(patient_id: str):
         "entry": [],
         "note": "Prediction history not yet implemented in MVP. Connect to database for full functionality."
     }
-
+ 
 # ==================== STARTUP EVENT ====================
-
+ 
 @app.on_event("startup")
 async def startup_event():
     """Cargar modelos y datos al iniciar"""
     logger.info("🚀 Iniciando API de Predicción de Glucosa...")
-    
+ 
     # Crear directorios si no existen
     MODELS_DIR.mkdir(exist_ok=True)
     DATA_DIR.mkdir(exist_ok=True)
-    
+ 
     # Cargar modelos ML
     load_ml_models()
-    
+ 
     # Cargar base de datos de pacientes
     load_patients_database()
-    
+ 
     logger.info(f"✅ API lista. Modelos cargados: {len(MODELS)}")
     logger.info(f"✅ Pacientes en DB: {len(PATIENTS_DB) if PATIENTS_DB is not None else 0}")
-
+ 
 # ==================== ROOT ====================
-
+ 
 @app.get("/")
 async def root():
     """API root endpoint"""
@@ -570,7 +570,7 @@ async def root():
         "models_active": len(MODELS),
         "fhir_version": "R4"
     }
-
+ 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
