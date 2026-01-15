@@ -18,7 +18,7 @@ from datetime import datetime
 import uvicorn
 
 # ==================== CONFIGURACIÓN ====================
-MODELS_DIR = Path("models")
+MODELS_DIR = Path(".")
 DATA_DIR = Path("data")
 AUTH_TOKEN = os.getenv("AUTH_TOKEN", "test-token-2026")
 
