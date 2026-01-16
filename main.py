@@ -92,8 +92,17 @@ def load_patients_db():
     csv_path = DATA_DIR / "base_unificada.csv"
     try:
         PATIENTS_DB = pd.read_csv(csv_path)
-        PATIENTS_DB = PATIENTS_DB.dropna(subset=['ID_Unico', 'Glucosa_Estimada_mgdL'])
+
+        # 🔧 ÚNICA CORRECCIÓN (NO CAMBIA TU ESTRUCTURA)
+        PATIENTS_DB.columns = PATIENTS_DB.columns.str.strip()
+        print("Columnas CSV:", PATIENTS_DB.columns.tolist())
+
+        PATIENTS_DB = PATIENTS_DB.dropna(
+            subset=['ID_Unico', 'Glucosa_Estimada_mgdL']
+        )
+
         print(f"✅ Base de datos cargada: {len(PATIENTS_DB)} pacientes desde {csv_path}")
+
     except Exception as e:
         print(f"⚠️ Error cargando pacientes: {e}")
         PATIENTS_DB = pd.DataFrame()
@@ -102,11 +111,9 @@ def load_patients_db():
 # FUNCIÓN DE PREPROCESAMIENTO
 # ============================================
 def preprocess_input(data: PredictionRequest) -> np.ndarray:
-    """Preprocesa el input aplicando LabelEncoder y StandardScaler"""
     if PREPROCESSING is None:
         raise HTTPException(status_code=500, detail="Preprocessing objects not loaded")
     
-    # Crear DataFrame con el input
     input_dict = {
         'Edad': data.edad,
         'Sexo': data.sexo.lower(),
@@ -125,17 +132,14 @@ def preprocess_input(data: PredictionRequest) -> np.ndarray:
     
     df = pd.DataFrame([input_dict])
     
-    # Aplicar LabelEncoders a variables categóricas
     for col, le in PREPROCESSING['label_encoders'].items():
         if col in df.columns:
             try:
                 df[col] = le.transform(df[col].astype(str))
             except:
-                df[col] = 0  # Valor desconocido
+                df[col] = 0
     
-    # Aplicar StandardScaler
     X_scaled = PREPROCESSING['scaler'].transform(df)
-    
     return X_scaled
 
 # ============================================
@@ -147,7 +151,6 @@ app = FastAPI(
     description="API de predicción de glucosa con 7 modelos ML y compatibilidad FHIR R4"
 )
 
-# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
