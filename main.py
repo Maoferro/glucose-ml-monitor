@@ -98,7 +98,7 @@ def load_patients_db():
         print("Columnas CSV:", PATIENTS_DB.columns.tolist())
 
         PATIENTS_DB = PATIENTS_DB.dropna(
-            subset=['ID_Unico', 'Glucosa_Estimada_mgdL']
+            subset=['ID_Unico'; 'Glucosa_Estimada_mgdL']
         )
 
         print(f"✅ Base de datos cargada: {len(PATIENTS_DB)} pacientes desde {csv_path}")
