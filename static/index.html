@@ -1369,7 +1369,7 @@ async function predictWithML() {
     logEvent('ml_evaluation_start', { data });
     
     try {
-        const response = await fetch('https://stringed-ericka-vertically.ngrok-free.dev/predict', {
+        const response = await fetch('https://glucose-ml-monitor.onrender.com/predict', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
