@@ -91,14 +91,16 @@ def load_patients_db():
     global PATIENTS_DB
     csv_path = DATA_DIR / "base_unificada.csv"
     try:
-        PATIENTS_DB = pd.read_csv(csv_path)
+        # ✅ CORRECCIÓN 1: separador correcto
+        PATIENTS_DB = pd.read_csv(csv_path, sep=";")
 
-        # 🔧 ÚNICA CORRECCIÓN (NO CAMBIA TU ESTRUCTURA)
+        # Limpieza mínima (la puedes dejar)
         PATIENTS_DB.columns = PATIENTS_DB.columns.str.strip()
         print("Columnas CSV:", PATIENTS_DB.columns.tolist())
 
+        # ✅ CORRECCIÓN 2: lista bien escrita
         PATIENTS_DB = PATIENTS_DB.dropna(
-            subset=['ID_Unico'; 'Glucosa_Estimada_mgdL']
+            subset=['ID_Unico', 'Glucosa_Estimada_mgdL']
         )
 
         print(f"✅ Base de datos cargada: {len(PATIENTS_DB)} pacientes desde {csv_path}")
