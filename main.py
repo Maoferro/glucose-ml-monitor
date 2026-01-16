@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import pandas as pd
@@ -10,6 +12,7 @@ import uvicorn
 from datetime import datetime
 import joblib
 import pickle
+
 
 # ============================================
 # CONFIGURACIÓN
@@ -152,6 +155,14 @@ app = FastAPI(
     version="2.0.0",
     description="API de predicción de glucosa con 7 modelos ML y compatibilidad FHIR R4"
 )
+# ==============================
+# SERVIR FRONTEND (INDEX.HTML)
+# ==============================
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+def index():
+    return FileResponse("static/index.html")
 
 app.add_middleware(
     CORSMiddleware,
