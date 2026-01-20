@@ -466,6 +466,186 @@
             color: #00FF00;
         }
 
+        /* Activity Tracker Styles */
+        .activity-card {
+            background: #2C2C2C;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .activity-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .activity-title {
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .activity-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .activity-badge.active {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+        }
+
+        .steps-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .steps-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #B0B0B0;
+        }
+
+        .steps-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #00FF00;
+        }
+
+        .steps-unit {
+            font-size: 14px;
+            color: #B0B0B0;
+            margin-left: 5px;
+        }
+
+        .steps-progress {
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .steps-progress-fill {
+            height: 100%;
+            background: #00FF00;
+            transition: width 0.3s;
+        }
+
+        .steps-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #B0B0B0;
+        }
+
+        .score-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .score-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .score-level-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .score-level-badge.sedentario { background: rgba(244, 67, 54, 0.2); color: #F44336; }
+        .score-level-badge.ligero { background: rgba(255, 152, 0, 0.2); color: #FF9800; }
+        .score-level-badge.moderado { background: rgba(255, 235, 59, 0.2); color: #FFC107; }
+        .score-level-badge.activo { background: rgba(76, 175, 80, 0.2); color: #4CAF50; }
+        .score-level-badge.muy_activo { background: rgba(0, 230, 118, 0.2); color: #00E676; }
+
+        .score-display {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .score-circle {
+            position: relative;
+            width: 80px;
+            height: 80px;
+        }
+
+        .score-circle svg {
+            transform: rotate(-90deg);
+        }
+
+        .score-circle-bg {
+            fill: none;
+            stroke: #333;
+            stroke-width: 8;
+        }
+
+        .score-circle-fill {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+            transition: stroke-dasharray 0.5s, stroke 0.3s;
+        }
+
+        .score-number {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .score-feedback {
+            flex: 1;
+            font-size: 13px;
+            color: #B0B0B0;
+        }
+
+        .score-feedback p {
+            margin-bottom: 5px;
+        }
+
+        .glucose-impact {
+            background: linear-gradient(135deg, rgba(76, 175, 80, 0.1), rgba(0, 230, 118, 0.1));
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        .glucose-impact-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #4CAF50;
+            font-weight: bold;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .glucose-impact p {
+            font-size: 12px;
+            color: #B0B0B0;
+        }
+
         .model-chart-container {
             height: 400px;
         }
@@ -506,8 +686,80 @@
     </div>
 
     <div class="chart-container">
-        <div class="chart-title">📈 Glucosa (Últimas 24h)</div>
+        <div class="chart-title" id="glucoseChartTitle">📈 Glucosa (Historial)</div>
         <canvas id="glucoseChart"></canvas>
+        <div id="glucoseChartLegend" class="chart-legend" style="display: flex; justify-content: center; gap: 15px; margin-top: 10px; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #00FF00;"></div>
+                <span style="color: #B0B0B0;">Normal (&lt;100)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #FFD700;"></div>
+                <span style="color: #B0B0B0;">Prediabetes (100-125)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #FF4444;"></div>
+                <span style="color: #B0B0B0;">Diabetes (&gt;126)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACTIVITY TRACKER -->
+    <div class="activity-card" id="activityTracker">
+        <div class="activity-header">
+            <div class="activity-title">🏃 Actividad Física</div>
+            <div class="activity-badge active" id="activityStatusBadge">🟢 Activo</div>
+        </div>
+
+        <!-- Contador de Pasos -->
+        <div class="steps-container">
+            <div class="steps-header">
+                <span>Pasos hoy</span>
+                <span>Meta: 10,000</span>
+            </div>
+            <div>
+                <span class="steps-value" id="stepsCount">0</span>
+                <span class="steps-unit">pasos</span>
+            </div>
+            <div class="steps-progress">
+                <div class="steps-progress-fill" id="stepsProgressBar" style="width: 0%"></div>
+            </div>
+            <div class="steps-stats">
+                <span>🔥 ~<span id="caloriesEstimate">0</span> cal</span>
+                <span>📏 ~<span id="distanceEstimate">0.00</span> km</span>
+            </div>
+        </div>
+
+        <!-- Score de Actividad -->
+        <div class="score-container">
+            <div class="score-header">
+                <span style="font-size: 14px; color: #B0B0B0;">Score de Actividad</span>
+                <span class="score-level-badge sedentario" id="activityLevelBadge">🪑 Sedentario</span>
+            </div>
+            <div class="score-display">
+                <div class="score-circle">
+                    <svg width="80" height="80">
+                        <circle class="score-circle-bg" cx="40" cy="40" r="35"></circle>
+                        <circle class="score-circle-fill" id="scoreCircleFill" cx="40" cy="40" r="35" 
+                            stroke="#F44336" stroke-dasharray="0 220"></circle>
+                    </svg>
+                    <div class="score-number" id="activityScoreValue">0</div>
+                </div>
+                <div class="score-feedback">
+                    <p id="activityFeedback">💡 Intenta moverte más para mejorar tu glucosa</p>
+                    <p style="font-size: 11px; opacity: 0.7;">La actividad física ayuda a reducir los niveles de glucosa</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Impacto en Glucosa -->
+        <div class="glucose-impact">
+            <div class="glucose-impact-header">
+                <span>📊</span>
+                <span>Impacto Estimado en Glucosa</span>
+            </div>
+            <p id="glucoseImpactText">Con tu actividad actual, el impacto en glucosa es mínimo. Más movimiento = mejor control.</p>
+        </div>
     </div>
 
     <div class="sensor-grid">
@@ -819,6 +1071,16 @@ let currentGyro = { alpha: 0, beta: 0, gamma: 0 };
 const MAX_SENSOR_POINTS = 50;
 const SENSOR_UPDATE_INTERVAL = 50; // 20 FPS para animación fluida
 
+// ==================== ACTIVITY TRACKER ====================
+const STEP_THRESHOLD = 1.2; // Umbral de aceleración para detectar paso
+const STEP_COOLDOWN = 300; // ms entre pasos válidos
+let steps = 0;
+let activityScore = 0;
+let lastStepTime = 0;
+let accelHistory = [];
+let gyroHistory = [];
+const DAILY_STEP_GOAL = 10000;
+
 // ==================== INICIALIZACIÓN ====================
 window.addEventListener('DOMContentLoaded', () => {
     initializeApp();
@@ -830,6 +1092,9 @@ function initializeApp() {
     
     // Inicializar sensores
     initSensors();
+    
+    // Inicializar Activity Tracker
+    initActivityTracker();
     
     // Verificar conexión API
     checkAPIHealth();
@@ -855,6 +1120,9 @@ function initializeApp() {
         const mins = Math.floor((Date.now() - sessionStartTime) / 60000);
         document.getElementById('last-update').textContent = mins > 0 ? 'Hace ' + mins + ' min' : 'Ahora';
     }, 60000);
+    
+    // Actualizar Activity Score cada 5 segundos
+    setInterval(updateActivityScore, 5000);
 }
 
 // ==================== API HEALTH CHECK ====================
@@ -933,42 +1201,63 @@ function updateSessionDuration() {
 
 // ==================== INICIALIZAR GRÁFICAS ====================
 function initCharts() {
-    // Gráfica de Glucosa
+    // Gráfica de Glucosa - Inicializar vacía (se llenará con historial real)
     const ctxGlucose = document.getElementById('glucoseChart').getContext('2d');
     glucoseChart = new Chart(ctxGlucose, {
         type: 'line',
         data: {
-            labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59'],
+            labels: [],
             datasets: [{
-                label: 'Glucosa',
-                data: [115, 118, 125, 140, 135, 130, 137],
+                label: 'Glucosa (mg/dL)',
+                data: [],
                 borderColor: '#00FF00',
                 backgroundColor: 'rgba(0, 255, 0, 0.1)',
                 tension: 0.4,
-                fill: true
+                fill: true,
+                pointRadius: 6,
+                pointBackgroundColor: [],
+                pointBorderColor: '#1C1C1C',
+                pointBorderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false }
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#2C2C2C',
+                    titleColor: '#00FF00',
+                    bodyColor: '#FFFFFF',
+                    borderColor: '#00FF00',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            const categoria = value < 100 ? 'Normal' : value <= 125 ? 'Prediabetes' : 'Diabetes';
+                            return value + ' mg/dL (' + categoria + ')';
+                        }
+                    }
+                }
             },
             scales: {
                 y: {
                     beginAtZero: false,
-                    min: 80,
-                    max: 160,
-                    ticks: { color: '#B0B0B0' },
+                    min: 70,
+                    max: 200,
+                    ticks: { color: '#B0B0B0', font: { size: 10 } },
                     grid: { color: '#333333' }
                 },
                 x: {
-                    ticks: { color: '#B0B0B0' },
+                    ticks: { color: '#B0B0B0', font: { size: 10 } },
                     grid: { color: '#333333' }
                 }
             }
         }
     });
+    
+    // Cargar historial y actualizar gráfica de glucosa
+    updateGlucoseChartFromHistory();
 
     // Gráfica de Acelerómetro
     const ctxAccel = document.getElementById('accelChart').getContext('2d');
@@ -1158,7 +1447,7 @@ async function requestIOSPermission() {
     }
 }
 
-// Manejador de acelerómetro - solo almacena valores actuales
+// Manejador de acelerómetro - almacena valores y detecta pasos
 function handleAccelerometer(event) {
     const x = event.accelerationIncludingGravity?.x || 0;
     const y = event.accelerationIncludingGravity?.y || 0;
@@ -1167,9 +1456,13 @@ function handleAccelerometer(event) {
     currentAccel.x = parseFloat(x.toFixed(2));
     currentAccel.y = parseFloat(y.toFixed(2));
     currentAccel.z = parseFloat(z.toFixed(2));
+    
+    // Calcular magnitud para detección de pasos
+    const magnitude = Math.sqrt(x * x + y * y + z * z);
+    detectStep(magnitude);
 }
 
-// Manejador de giroscopio - solo almacena valores actuales
+// Manejador de giroscopio - almacena valores y guarda historial
 function handleGyroscope(event) {
     const alpha = event.alpha || 0;
     const beta = event.beta || 0;
@@ -1178,6 +1471,11 @@ function handleGyroscope(event) {
     currentGyro.alpha = parseFloat(alpha.toFixed(2));
     currentGyro.beta = parseFloat(beta.toFixed(2));
     currentGyro.gamma = parseFloat(gamma.toFixed(2));
+    
+    // Guardar magnitud de rotación para activity score
+    const rotMag = Math.sqrt(alpha * alpha + beta * beta + gamma * gamma);
+    gyroHistory.push(rotMag);
+    if (gyroHistory.length > 600) gyroHistory.shift();
 }
 
 // Actualización de gráficos a intervalo fijo (tiempo real fluido)
@@ -1250,6 +1548,166 @@ function updateSensorTitles() {
     
     if (gyroTitle && sensorActive.gyro) {
         gyroTitle.innerHTML = `🔄 Giroscopio <span style="font-size:10px;color:#888;">α:<span style="color:#FF9800">${currentGyro.alpha.toFixed(0)}°</span> β:<span style="color:#9C27B0">${currentGyro.beta.toFixed(0)}°</span> γ:<span style="color:#00BCD4">${currentGyro.gamma.toFixed(0)}°</span></span>`;
+    }
+}
+
+// ==================== ACTIVITY TRACKER FUNCTIONS ====================
+function initActivityTracker() {
+    // Cargar datos del día desde localStorage
+    const today = new Date().toDateString();
+    const stored = localStorage.getItem('activity_data');
+    if (stored) {
+        try {
+            const data = JSON.parse(stored);
+            if (data.date === today) {
+                steps = data.steps || 0;
+                activityScore = data.activityScore || 0;
+                updateActivityUI();
+            }
+        } catch (e) {
+            console.error('Error loading activity data:', e);
+        }
+    }
+    console.log('✅ Activity Tracker inicializado');
+}
+
+function saveActivityData() {
+    const today = new Date().toDateString();
+    localStorage.setItem('activity_data', JSON.stringify({
+        date: today,
+        steps: steps,
+        activityScore: activityScore,
+        lastUpdate: new Date().toISOString()
+    }));
+}
+
+function detectStep(magnitude) {
+    const normalizedMag = Math.abs(magnitude - 9.81);
+    const now = Date.now();
+    
+    // Guardar en historial para calcular score
+    accelHistory.push(normalizedMag);
+    if (accelHistory.length > 600) accelHistory.shift();
+    
+    // Detección de pasos
+    if (normalizedMag > STEP_THRESHOLD && now - lastStepTime > STEP_COOLDOWN) {
+        lastStepTime = now;
+        steps++;
+        saveActivityData();
+        updateStepsUI();
+    }
+}
+
+function updateActivityScore() {
+    if (accelHistory.length === 0) return;
+    
+    // Calcular promedio de movimiento
+    const accelAvg = accelHistory.reduce((a, b) => a + b, 0) / accelHistory.length;
+    const gyroAvg = gyroHistory.length > 0 
+        ? gyroHistory.reduce((a, b) => a + b, 0) / gyroHistory.length 
+        : 0;
+    
+    // Score combinado (0-100)
+    const accelScore = Math.min(accelAvg * 20, 50);
+    const gyroScore = Math.min(gyroAvg * 0.5, 30);
+    const stepScore = Math.min((steps / 100) * 20, 20);
+    
+    activityScore = Math.min(Math.round(accelScore + gyroScore + stepScore), 100);
+    saveActivityData();
+    updateActivityUI();
+}
+
+function getActivityLevel(score) {
+    if (score < 10) return { level: 'sedentario', emoji: '🪑', text: 'Sedentario' };
+    if (score < 30) return { level: 'ligero', emoji: '🚶', text: 'Actividad Ligera' };
+    if (score < 50) return { level: 'moderado', emoji: '🏃', text: 'Actividad Moderada' };
+    if (score < 75) return { level: 'activo', emoji: '💪', text: 'Activo' };
+    return { level: 'muy_activo', emoji: '🔥', text: 'Muy Activo' };
+}
+
+function getScoreColor(score) {
+    if (score >= 50) return '#4CAF50';
+    if (score >= 25) return '#FFC107';
+    return '#F44336';
+}
+
+function getFeedbackMessage(level) {
+    switch (level) {
+        case 'sedentario': return '💡 Intenta moverte más para mejorar tu glucosa';
+        case 'ligero': return '👍 Buen inicio, sigue aumentando la actividad';
+        case 'moderado': return '🎯 Excelente nivel de actividad';
+        case 'activo': return '💪 ¡Muy bien! Esto ayuda a regular tu glucosa';
+        case 'muy_activo': return '🏆 ¡Increíble! Máximo beneficio para tu salud';
+        default: return '';
+    }
+}
+
+function getGlucoseImpactMessage(stepCount) {
+    if (stepCount < 1000) {
+        return 'Con tu actividad actual, el impacto en glucosa es mínimo. Más movimiento = mejor control.';
+    } else if (stepCount < 5000) {
+        return `Tus ${stepCount.toLocaleString()} pasos pueden ayudar a reducir ~5-10 mg/dL de glucosa.`;
+    } else if (stepCount < 10000) {
+        return `¡Excelente! ${stepCount.toLocaleString()} pasos pueden reducir ~10-20 mg/dL de glucosa.`;
+    } else {
+        return `🏆 ¡Meta cumplida! ${stepCount.toLocaleString()} pasos pueden reducir hasta ~25-30 mg/dL de glucosa.`;
+    }
+}
+
+function updateStepsUI() {
+    const stepsEl = document.getElementById('stepsCount');
+    const progressEl = document.getElementById('stepsProgressBar');
+    const caloriesEl = document.getElementById('caloriesEstimate');
+    const distanceEl = document.getElementById('distanceEstimate');
+    
+    if (stepsEl) stepsEl.textContent = steps.toLocaleString();
+    
+    const progress = Math.min((steps / DAILY_STEP_GOAL) * 100, 100);
+    if (progressEl) progressEl.style.width = progress + '%';
+    
+    const calories = Math.round(steps * 0.04);
+    if (caloriesEl) caloriesEl.textContent = calories;
+    
+    const distance = (steps * 0.762 / 1000).toFixed(2);
+    if (distanceEl) distanceEl.textContent = distance;
+}
+
+function updateActivityUI() {
+    updateStepsUI();
+    
+    const activity = getActivityLevel(activityScore);
+    const color = getScoreColor(activityScore);
+    
+    // Actualizar score circular
+    const scoreValueEl = document.getElementById('activityScoreValue');
+    const scoreCircleEl = document.getElementById('scoreCircleFill');
+    
+    if (scoreValueEl) scoreValueEl.textContent = activityScore;
+    if (scoreCircleEl) {
+        const dashLength = activityScore * 2.2;
+        scoreCircleEl.setAttribute('stroke-dasharray', `${dashLength} 220`);
+        scoreCircleEl.setAttribute('stroke', color);
+    }
+    
+    // Actualizar badge de nivel
+    const levelBadgeEl = document.getElementById('activityLevelBadge');
+    if (levelBadgeEl) {
+        levelBadgeEl.textContent = `${activity.emoji} ${activity.text}`;
+        levelBadgeEl.className = `score-level-badge ${activity.level}`;
+    }
+    
+    // Actualizar feedback
+    const feedbackEl = document.getElementById('activityFeedback');
+    if (feedbackEl) feedbackEl.textContent = getFeedbackMessage(activity.level);
+    
+    // Actualizar impacto en glucosa
+    const impactEl = document.getElementById('glucoseImpactText');
+    if (impactEl) impactEl.textContent = getGlucoseImpactMessage(steps);
+    
+    // Actualizar indicador en header principal
+    const mainActivityEl = document.querySelector('.indicators .indicator:last-child strong');
+    if (mainActivityEl) {
+        mainActivityEl.textContent = `${activity.emoji} ${activity.text.toUpperCase()}`;
     }
 }
 
@@ -1738,6 +2196,9 @@ function displayMLResults(result) {
     // Actualizar glucosa principal con el valor del mejor modelo
     document.getElementById('main-glucose').textContent = Math.round(bestValue);
     
+    // 🔴 INMEDIATAMENTE agregar a la gráfica de glucosa como punto actual
+    addCurrentPredictionToChart(Math.round(bestValue));
+    
     // Mostrar promedio ensemble
     document.getElementById('ensemble-value').textContent = Math.round(ensembleValue) + ' mg/dL';
     
@@ -1771,7 +2232,8 @@ function displayMLResults(result) {
     lastMLResult = {
         ...result,
         modelo_usado: bestModel,
-        valor_modelo: bestValue
+        valor_modelo: bestValue,
+        categoria: categoria
     };
 }
 
@@ -1853,7 +2315,81 @@ function saveMLEvaluation() {
     saveHistoryToStorage();
     updateHistoryDisplay();
     
+    // Limpiar predicción actual ya que ahora está guardada
+    clearCurrentPrediction();
+    updateGlucoseChartFromHistory();
+    
     alert('✅ Evaluación guardada en historial');
+}
+
+// ==================== GRÁFICA DE GLUCOSA DINÁMICA ====================
+// Variable para almacenar la última predicción en tiempo real (aún no guardada)
+let currentPrediction = null;
+
+function updateGlucoseChartFromHistory() {
+    if (!glucoseChart) return;
+    
+    // Filtrar solo evaluaciones ML guardadas
+    const mlEvaluations = historyData
+        .filter(item => item.type === 'ml_evaluation')
+        .slice(-6); // 6 del historial + 1 actual = 7 máximo
+    
+    // Construir datos del historial
+    const labels = mlEvaluations.map(item => {
+        const date = new Date(item.timestamp);
+        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    });
+    
+    const dataValues = mlEvaluations.map(item => {
+        // Usar valor del mejor modelo si existe, sino glucosa_predicha
+        return item.data.valor_modelo || item.data.glucosa_predicha;
+    });
+    
+    // Agregar predicción actual (no guardada) si existe
+    if (currentPrediction) {
+        labels.push('Ahora');
+        dataValues.push(currentPrediction.value);
+    }
+    
+    // Construir colores por categoría semántica
+    const pointColors = dataValues.map(v => 
+        v < 100 ? '#00FF00' : v <= 125 ? '#FFD700' : '#FF4444'
+    );
+    
+    // Si no hay datos, mostrar placeholder con valor inicial
+    if (dataValues.length === 0) {
+        const currentGlucose = parseInt(document.getElementById('main-glucose').textContent) || 137;
+        glucoseChart.data.labels = ['Inicio'];
+        glucoseChart.data.datasets[0].data = [currentGlucose];
+        glucoseChart.data.datasets[0].pointBackgroundColor = [
+            currentGlucose < 100 ? '#00FF00' : currentGlucose <= 125 ? '#FFD700' : '#FF4444'
+        ];
+        document.getElementById('glucoseChartTitle').textContent = '📈 Glucosa (Realiza una evaluación ML)';
+    } else {
+        glucoseChart.data.labels = labels;
+        glucoseChart.data.datasets[0].data = dataValues;
+        glucoseChart.data.datasets[0].pointBackgroundColor = pointColors;
+        
+        const savedCount = mlEvaluations.length;
+        const currentText = currentPrediction ? ' +1 actual' : '';
+        document.getElementById('glucoseChartTitle').textContent = `📈 Glucosa (${savedCount} guardadas${currentText})`;
+    }
+    
+    glucoseChart.update();
+}
+
+// Función para agregar predicción actual a la gráfica (antes de guardar)
+function addCurrentPredictionToChart(value) {
+    currentPrediction = {
+        value: value,
+        timestamp: new Date()
+    };
+    updateGlucoseChartFromHistory();
+}
+
+// Limpiar predicción actual cuando se guarda
+function clearCurrentPrediction() {
+    currentPrediction = null;
 }
 
 // ==================== HISTORIAL ====================
@@ -1862,11 +2398,13 @@ function loadHistoryFromStorage() {
     if (stored) {
         historyData = JSON.parse(stored);
         updateHistoryDisplay();
+        updateGlucoseChartFromHistory();
     }
 }
 
 function saveHistoryToStorage() {
     localStorage.setItem('glucose_history', JSON.stringify(historyData));
+    updateGlucoseChartFromHistory();
 }
 
 function updateHistoryDisplay() {
