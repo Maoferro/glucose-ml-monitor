@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -807,10 +808,16 @@ let formData = {
 // Charts
 let glucoseChart, accelChart, gyroChart, modelsChart;
 
-// Datos de sensores
+// Datos de sensores - usando refs para tiempo real
 let accelData = { x: [], y: [], z: [], labels: [] };
 let gyroData = { alpha: [], beta: [], gamma: [], labels: [] };
 let sensorActive = { accel: false, gyro: false };
+
+// Valores actuales de sensores (se actualizan en cada evento)
+let currentAccel = { x: 0, y: 0, z: 0 };
+let currentGyro = { alpha: 0, beta: 0, gamma: 0 };
+const MAX_SENSOR_POINTS = 50;
+const SENSOR_UPDATE_INTERVAL = 50; // 20 FPS para animación fluida
 
 // ==================== INICIALIZACIÓN ====================
 window.addEventListener('DOMContentLoaded', () => {
@@ -1078,82 +1085,171 @@ function updateCharts() {
     if (gyroChart) gyroChart.update();
 }
 
-// ==================== SENSORES ====================
+// ==================== SENSORES EN TIEMPO REAL ====================
 function initSensors() {
-    // Acelerómetro
-    if (window.DeviceMotionEvent) {
-        window.addEventListener('devicemotion', handleAccelerometer);
-        sensorActive.accel = true;
-        console.log('✅ Acelerómetro activado');
-    }
+    // Verificar si es iOS y necesita permiso
+    const isIOS = typeof DeviceMotionEvent.requestPermission === 'function' || 
+                  typeof DeviceOrientationEvent.requestPermission === 'function';
     
-    // Giroscopio
-    if (window.DeviceOrientationEvent) {
-        // Para iOS 13+, necesita permiso explícito
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            // Agregar botón para solicitar permiso en iOS
-            console.log('📱 iOS detectado - requiere permiso para sensores');
-        } else {
+    if (isIOS) {
+        // Agregar botón para solicitar permiso en iOS
+        console.log('📱 iOS detectado - requiere permiso para sensores');
+        addIOSPermissionButton();
+    } else {
+        // No-iOS: agregar listeners directamente
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', handleAccelerometer);
+            sensorActive.accel = true;
+            console.log('✅ Acelerómetro activado');
+        }
+        
+        if (window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', handleGyroscope);
             sensorActive.gyro = true;
             console.log('✅ Giroscopio activado');
         }
     }
+    
+    // Iniciar intervalo de actualización de gráficos (tiempo real)
+    setInterval(updateSensorCharts, SENSOR_UPDATE_INTERVAL);
 }
 
+function addIOSPermissionButton() {
+    // Buscar el contenedor de los gráficos de sensores
+    const sensorGrid = document.querySelector('.sensor-grid');
+    if (sensorGrid) {
+        const permBtn = document.createElement('button');
+        permBtn.className = 'btn btn-primary';
+        permBtn.style.cssText = 'margin-bottom: 15px; width: 100%;';
+        permBtn.innerHTML = '🔓 Activar Sensores (iOS)';
+        permBtn.onclick = requestIOSPermission;
+        sensorGrid.parentNode.insertBefore(permBtn, sensorGrid);
+    }
+}
+
+async function requestIOSPermission() {
+    try {
+        // Solicitar permiso para acelerómetro
+        if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            const motionPermission = await DeviceMotionEvent.requestPermission();
+            if (motionPermission === 'granted') {
+                window.addEventListener('devicemotion', handleAccelerometer);
+                sensorActive.accel = true;
+                console.log('✅ Acelerómetro activado (iOS)');
+            }
+        }
+        
+        // Solicitar permiso para giroscopio
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const orientationPermission = await DeviceOrientationEvent.requestPermission();
+            if (orientationPermission === 'granted') {
+                window.addEventListener('deviceorientation', handleGyroscope);
+                sensorActive.gyro = true;
+                console.log('✅ Giroscopio activado (iOS)');
+            }
+        }
+        
+        // Ocultar botón de permiso
+        const permBtn = document.querySelector('.btn-primary[onclick="requestIOSPermission()"]');
+        if (permBtn) permBtn.style.display = 'none';
+        
+    } catch (error) {
+        console.error('Error solicitando permisos:', error);
+    }
+}
+
+// Manejador de acelerómetro - solo almacena valores actuales
 function handleAccelerometer(event) {
     const x = event.accelerationIncludingGravity?.x || 0;
     const y = event.accelerationIncludingGravity?.y || 0;
     const z = event.accelerationIncludingGravity?.z || 0;
     
-    // Limitar a 30 puntos
-    if (accelData.x.length > 30) {
-        accelData.x.shift();
-        accelData.y.shift();
-        accelData.z.shift();
-        accelData.labels.shift();
-    }
-    
-    accelData.x.push(parseFloat(x.toFixed(2)));
-    accelData.y.push(parseFloat(y.toFixed(2)));
-    accelData.z.push(parseFloat(z.toFixed(2)));
-    accelData.labels.push('');
-    
-    // Actualizar gráfica cada 10 lecturas
-    if (accelChart && accelData.x.length % 5 === 0) {
-        accelChart.data.labels = accelData.labels;
-        accelChart.data.datasets[0].data = accelData.x;
-        accelChart.data.datasets[1].data = accelData.y;
-        accelChart.data.datasets[2].data = accelData.z;
-        accelChart.update('none');
-    }
+    currentAccel.x = parseFloat(x.toFixed(2));
+    currentAccel.y = parseFloat(y.toFixed(2));
+    currentAccel.z = parseFloat(z.toFixed(2));
 }
 
+// Manejador de giroscopio - solo almacena valores actuales
 function handleGyroscope(event) {
     const alpha = event.alpha || 0;
     const beta = event.beta || 0;
     const gamma = event.gamma || 0;
     
-    // Limitar a 30 puntos
-    if (gyroData.alpha.length > 30) {
-        gyroData.alpha.shift();
-        gyroData.beta.shift();
-        gyroData.gamma.shift();
-        gyroData.labels.shift();
+    currentGyro.alpha = parseFloat(alpha.toFixed(2));
+    currentGyro.beta = parseFloat(beta.toFixed(2));
+    currentGyro.gamma = parseFloat(gamma.toFixed(2));
+}
+
+// Actualización de gráficos a intervalo fijo (tiempo real fluido)
+function updateSensorCharts() {
+    // Solo actualizar si estamos en la pantalla de monitor
+    if (currentScreen !== 'monitor') return;
+    
+    // Actualizar datos del acelerómetro
+    if (sensorActive.accel || currentAccel.x !== 0 || currentAccel.y !== 0 || currentAccel.z !== 0) {
+        // Mantener máximo de puntos
+        if (accelData.x.length >= MAX_SENSOR_POINTS) {
+            accelData.x.shift();
+            accelData.y.shift();
+            accelData.z.shift();
+            accelData.labels.shift();
+        }
+        
+        accelData.x.push(currentAccel.x);
+        accelData.y.push(currentAccel.y);
+        accelData.z.push(currentAccel.z);
+        accelData.labels.push('');
+        
+        // Actualizar gráfico
+        if (accelChart) {
+            accelChart.data.labels = accelData.labels;
+            accelChart.data.datasets[0].data = accelData.x;
+            accelChart.data.datasets[1].data = accelData.y;
+            accelChart.data.datasets[2].data = accelData.z;
+            accelChart.update('none'); // 'none' evita animación para rendimiento
+        }
     }
     
-    gyroData.alpha.push(parseFloat(alpha.toFixed(2)));
-    gyroData.beta.push(parseFloat(beta.toFixed(2)));
-    gyroData.gamma.push(parseFloat(gamma.toFixed(2)));
-    gyroData.labels.push('');
+    // Actualizar datos del giroscopio
+    if (sensorActive.gyro || currentGyro.alpha !== 0 || currentGyro.beta !== 0 || currentGyro.gamma !== 0) {
+        // Mantener máximo de puntos
+        if (gyroData.alpha.length >= MAX_SENSOR_POINTS) {
+            gyroData.alpha.shift();
+            gyroData.beta.shift();
+            gyroData.gamma.shift();
+            gyroData.labels.shift();
+        }
+        
+        gyroData.alpha.push(currentGyro.alpha);
+        gyroData.beta.push(currentGyro.beta);
+        gyroData.gamma.push(currentGyro.gamma);
+        gyroData.labels.push('');
+        
+        // Actualizar gráfico
+        if (gyroChart) {
+            gyroChart.data.labels = gyroData.labels;
+            gyroChart.data.datasets[0].data = gyroData.alpha;
+            gyroChart.data.datasets[1].data = gyroData.beta;
+            gyroChart.data.datasets[2].data = gyroData.gamma;
+            gyroChart.update('none');
+        }
+    }
     
-    // Actualizar gráfica cada 5 lecturas
-    if (gyroChart && gyroData.alpha.length % 5 === 0) {
-        gyroChart.data.labels = gyroData.labels;
-        gyroChart.data.datasets[0].data = gyroData.alpha;
-        gyroChart.data.datasets[1].data = gyroData.beta;
-        gyroChart.data.datasets[2].data = gyroData.gamma;
-        gyroChart.update('none');
+    // Actualizar indicadores de valores actuales en los títulos
+    updateSensorTitles();
+}
+
+// Mostrar valores actuales en tiempo real
+function updateSensorTitles() {
+    const accelTitle = document.querySelector('#accelChart')?.closest('.chart-container')?.querySelector('.chart-title');
+    const gyroTitle = document.querySelector('#gyroChart')?.closest('.chart-container')?.querySelector('.chart-title');
+    
+    if (accelTitle && sensorActive.accel) {
+        accelTitle.innerHTML = `📱 Acelerómetro <span style="font-size:10px;color:#888;">X:<span style="color:#FF5252">${currentAccel.x}</span> Y:<span style="color:#2196F3">${currentAccel.y}</span> Z:<span style="color:#4CAF50">${currentAccel.z}</span></span>`;
+    }
+    
+    if (gyroTitle && sensorActive.gyro) {
+        gyroTitle.innerHTML = `🔄 Giroscopio <span style="font-size:10px;color:#888;">α:<span style="color:#FF9800">${currentGyro.alpha.toFixed(0)}°</span> β:<span style="color:#9C27B0">${currentGyro.beta.toFixed(0)}°</span> γ:<span style="color:#00BCD4">${currentGyro.gamma.toFixed(0)}°</span></span>`;
     }
 }
 
@@ -1585,4 +1681,6 @@ function downloadFile(content, filename, type) {
 </script>
 
 </body>
+</html>
+
 </html>
