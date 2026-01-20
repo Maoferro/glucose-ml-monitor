@@ -53,7 +53,25 @@ PREPROCESSING_FILE = MODELS_DIR / "preprocessing_objects.pkl"
 models = {}
 label_encoders = {}
 scaler = None
-FEATURE_NAMES = None  # CRÍTICO: Almacenará los nombres de columnas del entrenamiento
+FEATURE_NAMES = None
+
+# ===== MAPEO DE FEATURES (CRÍTICO) =====
+# El frontend envía lowercase, pero los modelos fueron entrenados con PascalCase
+FEATURE_MAP = {
+    "edad": "Edad",
+    "sexo": "Sexo",
+    "peso": "Peso",
+    "talla": "Talla",
+    "imc": "IMC",
+    "perimetro_cintura": "Perimetro_Cintura",
+    "spo2": "SpO2",
+    "frecuencia_cardiaca": "Frecuencia_Cardiaca",
+    "actividad_fisica": "Actividad_Fisica",
+    "consumo_frutas": "Consumo_Frutas",
+    "tiene_hipertension": "Tiene_Hipertension",
+    "tiene_diabetes": "Tiene_Diabetes",
+    "puntaje_findrisc": "Puntaje_FINDRISC"
+}
 
 # ===== MODELO DE DATOS DE ENTRADA =====
 class PredictionInput(BaseModel):
@@ -61,7 +79,7 @@ class PredictionInput(BaseModel):
     sexo: str = Field(..., description="Sexo: Masculino o Femenino")
     peso: float = Field(..., gt=0, description="Peso en kilogramos")
     talla: float = Field(..., gt=0, description="Talla en metros")
-    imc: float = Field(..., gt=0, description="Índice de Masa Corporal")
+    imc: Optional[float] = Field(None, description="Índice de Masa Corporal")
     perimetro_cintura: float = Field(..., gt=0, description="Perímetro de cintura en cm")
     spo2: int = Field(..., ge=70, le=100, description="Saturación de oxígeno")
     frecuencia_cardiaca: int = Field(..., ge=40, le=200, description="Frecuencia cardíaca")
@@ -79,23 +97,21 @@ async def load_models():
     try:
         logger.info("🚀 Iniciando carga de modelos ML...")
         
-        # 1. Cargar objetos de preprocesamiento
         if not PREPROCESSING_FILE.exists():
             raise FileNotFoundError(f"Archivo de preprocesamiento no encontrado: {PREPROCESSING_FILE}")
         
         preprocessing = joblib.load(PREPROCESSING_FILE)
         label_encoders = preprocessing.get('label_encoders', {})
         scaler = preprocessing.get('scaler', None)
-        FEATURE_NAMES = preprocessing.get('feature_names', None)  # CRÍTICO
+        FEATURE_NAMES = preprocessing.get('feature_names', None)
         
         logger.info(f"✅ Preprocesamiento cargado")
         logger.info(f"📋 Feature Names: {FEATURE_NAMES}")
         
         if FEATURE_NAMES is None:
-            logger.warning("⚠️ feature_names no encontrado en preprocessing_objects.pkl")
-            logger.warning("⚠️ Los modelos Ridge, Lasso, ElasticNet pueden fallar")
+            logger.warning("⚠️ feature_names no encontrado, usando FEATURE_MAP")
+            FEATURE_NAMES = list(FEATURE_MAP.values())
         
-        # 2. Cargar cada modelo ML
         models_loaded = 0
         for model_name, model_path in MODEL_FILES.items():
             if not model_path.exists():
@@ -118,58 +134,62 @@ async def load_models():
         logger.error(f"❌ Error crítico al cargar modelos: {str(e)}")
         raise
 
-# ===== FUNCIÓN DE PREPROCESAMIENTO =====
+# ===== FUNCIÓN DE PREPROCESAMIENTO (CORREGIDA) =====
 def preprocess_input(data: PredictionInput) -> pd.DataFrame:
     """
-    Preprocesa los datos de entrada y RETORNA UN DATAFRAME con feature names.
-    CRÍTICO: Esto resuelve el error 'X does not have valid feature names'.
+    Preprocesa los datos de entrada con FEATURE NAMES en PascalCase.
     """
     try:
-        # 1. Convertir input a diccionario
+        # 1. Calcular IMC si no viene
+        imc_value = data.imc if data.imc else (data.peso / (data.talla ** 2))
+        
+        # 2. Crear diccionario con nombres PascalCase (como espera el modelo)
         input_dict = {
-            'edad': data.edad,
-            'sexo': data.sexo,
-            'peso': data.peso,
-            'talla': data.talla,
-            'imc': data.imc,
-            'perimetro_cintura': data.perimetro_cintura,
-            'spo2': data.spo2,
-            'frecuencia_cardiaca': data.frecuencia_cardiaca,
-            'actividad_fisica': data.actividad_fisica,
-            'consumo_frutas': data.consumo_frutas,
-            'tiene_hipertension': data.tiene_hipertension,
-            'tiene_diabetes': data.tiene_diabetes,
-            'puntaje_findrisc': data.puntaje_findrisc
+            'Edad': data.edad,
+            'Sexo': data.sexo.lower(),
+            'Peso': data.peso,
+            'Talla': data.talla,
+            'IMC': imc_value,
+            'Perimetro_Cintura': data.perimetro_cintura,
+            'SpO2': data.spo2,
+            'Frecuencia_Cardiaca': data.frecuencia_cardiaca,
+            'Actividad_Fisica': data.actividad_fisica.lower(),
+            'Consumo_Frutas': data.consumo_frutas.lower(),
+            'Tiene_Hipertension': data.tiene_hipertension.lower(),
+            'Tiene_Diabetes': data.tiene_diabetes.lower(),
+            'Puntaje_FINDRISC': data.puntaje_findrisc
         }
         
-        # 2. Aplicar LabelEncoders a variables categóricas
+        # 3. Aplicar LabelEncoders a variables categóricas
         for col, encoder in label_encoders.items():
             if col in input_dict:
                 try:
                     input_dict[col] = encoder.transform([input_dict[col]])[0]
                 except ValueError as e:
-                    logger.warning(f"⚠️ Valor no visto en {col}: {input_dict[col]}, usando valor por defecto")
+                    logger.warning(f"⚠️ Valor no visto en {col}: {input_dict[col]}, usando 0")
                     input_dict[col] = 0
         
-        # 3. Convertir a DataFrame con una fila
+        # 4. Crear DataFrame con orden correcto de columnas
         df = pd.DataFrame([input_dict])
         
-        # 4. Aplicar StandardScaler
+        # 5. Reordenar columnas según FEATURE_NAMES si existe
+        if FEATURE_NAMES is not None:
+            # Asegurar que todas las columnas existan
+            for col in FEATURE_NAMES:
+                if col not in df.columns:
+                    df[col] = 0
+            df = df[FEATURE_NAMES]
+        
+        # 6. Aplicar StandardScaler
         if scaler is not None:
             X_scaled = scaler.transform(df)
         else:
             X_scaled = df.values
         
-        # 5. CRÍTICO: Convertir de nuevo a DataFrame con FEATURE NAMES
-        if FEATURE_NAMES is not None:
-            X_scaled_df = pd.DataFrame(X_scaled, columns=FEATURE_NAMES)
-            logger.info(f"✅ DataFrame creado con feature names: {list(X_scaled_df.columns)}")
-            return X_scaled_df
-        else:
-            # Fallback: usar nombres de columnas del DataFrame original
-            logger.warning("⚠️ Usando nombres de columnas del DataFrame original")
-            X_scaled_df = pd.DataFrame(X_scaled, columns=df.columns)
-            return X_scaled_df
+        # 7. Retornar como DataFrame con feature names
+        X_scaled_df = pd.DataFrame(X_scaled, columns=df.columns)
+        logger.info(f"✅ DataFrame creado: {list(X_scaled_df.columns)}")
+        return X_scaled_df
         
     except Exception as e:
         logger.error(f"❌ Error en preprocesamiento: {str(e)}")
@@ -178,7 +198,6 @@ def preprocess_input(data: PredictionInput) -> pd.DataFrame:
 # ===== ENDPOINT: HEALTH CHECK =====
 @app.get("/health")
 async def health_check():
-    """Verifica el estado de la API y modelos cargados"""
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
@@ -190,38 +209,30 @@ async def health_check():
 # ===== ENDPOINT: PREDICCIÓN =====
 @app.post("/predict")
 async def predict_glucose(data: PredictionInput):
-    """
-    Realiza predicción de glucosa usando ensemble de 7 modelos ML
-    """
     try:
-        logger.info(f"📥 Solicitud de predicción recibida: edad={data.edad}, sexo={data.sexo}")
+        logger.info(f"📥 Predicción: edad={data.edad}, sexo={data.sexo}")
         
-        # 1. Preprocesar datos (RETORNA DATAFRAME con feature names)
         X_preprocessed = preprocess_input(data)
         logger.info(f"✅ Datos preprocesados: shape={X_preprocessed.shape}")
         
-        # 2. Realizar predicciones con cada modelo
         predicciones_individuales = {}
         predicciones_validas = []
         
         for model_name, model in models.items():
             try:
-                # CRÍTICO: Ahora X_preprocessed es un DataFrame con feature names
                 pred = model.predict(X_preprocessed)[0]
                 predicciones_individuales[model_name] = float(pred)
                 predicciones_validas.append(pred)
                 logger.info(f"✅ {model_name}: {pred:.2f} mg/dL")
             except Exception as e:
-                logger.error(f"❌ Error en modelo {model_name}: {str(e)}")
+                logger.error(f"❌ Error en {model_name}: {str(e)}")
                 predicciones_individuales[model_name] = None
         
         if len(predicciones_validas) == 0:
             raise HTTPException(status_code=500, detail="Ningún modelo pudo generar predicción")
         
-        # 3. Calcular ensemble (promedio ponderado)
         prediccion_final = float(np.mean(predicciones_validas))
         
-        # 4. Clasificar categoría de glucosa
         if prediccion_final < 100:
             categoria = "Normal"
         elif prediccion_final < 126:
@@ -229,20 +240,17 @@ async def predict_glucose(data: PredictionInput):
         else:
             categoria = "Diabetes"
         
-        # 5. Calcular métricas de confianza
         std_predicciones = float(np.std(predicciones_validas))
-        mae = std_predicciones  # Aproximación
+        mae = std_predicciones
         confidence = 1.0 - (std_predicciones / prediccion_final) if prediccion_final > 0 else 0.5
         confidence = max(0.0, min(1.0, confidence))
         
         intervalo_min = prediccion_final - 1.96 * std_predicciones
         intervalo_max = prediccion_final + 1.96 * std_predicciones
         
-        # 6. Identificar mejor modelo
         mejor_modelo = min(predicciones_individuales.items(), 
                           key=lambda x: abs(x[1] - prediccion_final) if x[1] is not None else float('inf'))
         
-        # 7. Generar respuesta
         response = {
             "prediccion_final": round(prediccion_final, 2),
             "categoria": categoria,
@@ -258,7 +266,7 @@ async def predict_glucose(data: PredictionInput):
             "input_data": data.dict()
         }
         
-        logger.info(f"✅ Predicción completada: {prediccion_final:.2f} mg/dL ({categoria})")
+        logger.info(f"✅ Predicción: {prediccion_final:.2f} mg/dL ({categoria})")
         return response
         
     except HTTPException:
@@ -270,18 +278,14 @@ async def predict_glucose(data: PredictionInput):
 # ===== ENDPOINT: SERVIR INDEX.HTML =====
 @app.get("/")
 async def serve_index():
-    """Sirve el archivo index.html de la interfaz web"""
     index_path = BASE_DIR / "index.html"
-    
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="index.html no encontrado")
-    
     return FileResponse(index_path)
 
 # ===== ENDPOINT: LISTAR MODELOS =====
 @app.get("/models")
 async def list_models():
-    """Lista todos los modelos ML cargados"""
     return {
         "models": list(models.keys()),
         "total": len(models),
@@ -291,3 +295,4 @@ async def list_models():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
