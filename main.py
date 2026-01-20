@@ -1,169 +1,30 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from typing import Optional, Dict, List
+from pydantic import BaseModel, Field
+from pathlib import Path
+import joblib
 import pandas as pd
 import numpy as np
-from pathlib import Path
-import os
-import uvicorn
+from typing import Dict, List, Optional
+import logging
 from datetime import datetime
-import joblib
-import pickle
 
-
-# ============================================
-# CONFIGURACIÓN
-# ============================================
-AUTH_TOKEN = os.getenv("AUTH_TOKEN", "test-token-2026")
-MODELS_DIR = Path("models")
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-
-# Variables globales
-MODELS = {}
-PREPROCESSING = None
-PATIENTS_DB = None
-
-# ============================================
-# MODELO PYDANTIC
-# ============================================
-class PredictionRequest(BaseModel):
-    edad: int
-    sexo: str
-    peso: float
-    talla: float
-    perimetro_cintura: float
-    spo2: Optional[float] = 98.0
-    frecuencia_cardiaca: Optional[float] = 75.0
-    actividad_fisica: str
-    consumo_frutas: str
-    tiene_hipertension: str
-    tiene_diabetes: str
-    puntaje_findrisc: int
-
-# ============================================
-# FUNCIÓN PARA CARGAR PREPROCESADORES
-# ============================================
-def load_preprocessing():
-    global PREPROCESSING
-    preprocessing_path = MODELS_DIR / "preprocessing_objects.pkl"
-    try:
-        with open(preprocessing_path, 'rb') as f:
-            PREPROCESSING = pickle.load(f)
-        print(f"✅ Preprocesadores cargados desde {preprocessing_path}")
-        print(f"   • Scaler: {type(PREPROCESSING['scaler']).__name__}")
-        print(f"   • Label Encoders: {len(PREPROCESSING['label_encoders'])} columnas")
-        print(f"   • Features: {len(PREPROCESSING['feature_names'])}")
-    except Exception as e:
-        print(f"❌ Error cargando preprocesadores: {e}")
-        PREPROCESSING = None
-
-# ============================================
-# FUNCIÓN PARA CARGAR MODELOS ML
-# ============================================
-def load_models():
-    global MODELS
-    model_files = {
-        "xgboost": "XGBoost.joblib",
-        "random_forest": "Random_Forest.joblib",
-        "lightgbm": "LightGBM.joblib",
-        "gradient_boosting": "Gradient_Boosting.joblib",
-        "ridge": "Ridge.joblib",
-        "lasso": "Lasso.joblib",
-        "elasticnet": "ElasticNet.joblib"
-    }
-    
-    for name, filename in model_files.items():
-        model_path = MODELS_DIR / filename
-        try:
-            model = joblib.load(model_path)
-            MODELS[name] = model
-            print(f"✅ Modelo {name} cargado desde {model_path}")
-        except Exception as e:
-            print(f"❌ Error cargando modelo {name}: {e}")
-    
-    print(f"✅ Total de modelos cargados: {len(MODELS)}")
-
-# ============================================
-# FUNCIÓN PARA CARGAR BASE DE DATOS DE PACIENTES
-# ============================================
-def load_patients_db():
-    global PATIENTS_DB
-    csv_path = DATA_DIR / "base_unificada.csv"
-    try:
-        # ✅ CORRECCIÓN 1: separador correcto
-        PATIENTS_DB = pd.read_csv(csv_path, sep=";")
-
-        # Limpieza mínima (la puedes dejar)
-        PATIENTS_DB.columns = PATIENTS_DB.columns.str.strip()
-        print("Columnas CSV:", PATIENTS_DB.columns.tolist())
-
-        # ✅ CORRECCIÓN 2: lista bien escrita
-        PATIENTS_DB = PATIENTS_DB.dropna(
-            subset=['ID_Unico', 'Glucosa_Estimada_mgdL']
-        )
-
-        print(f"✅ Base de datos cargada: {len(PATIENTS_DB)} pacientes desde {csv_path}")
-
-    except Exception as e:
-        print(f"⚠️ Error cargando pacientes: {e}")
-        PATIENTS_DB = pd.DataFrame()
-
-# ============================================
-# FUNCIÓN DE PREPROCESAMIENTO
-# ============================================
-def preprocess_input(data: PredictionRequest) -> np.ndarray:
-    if PREPROCESSING is None:
-        raise HTTPException(status_code=500, detail="Preprocessing objects not loaded")
-    
-    input_dict = {
-        'Edad': data.edad,
-        'Sexo': data.sexo.lower(),
-        'Peso': data.peso,
-        'Talla': data.talla,
-        'IMC': data.peso / (data.talla ** 2),
-        'Perimetro_Cintura': data.perimetro_cintura,
-        'SpO2': data.spo2,
-        'Frecuencia_Cardiaca': data.frecuencia_cardiaca,
-        'Actividad_Fisica': data.actividad_fisica.lower(),
-        'Consumo_Frutas': data.consumo_frutas.lower(),
-        'Tiene_Hipertension': data.tiene_hipertension.lower(),
-        'Tiene_Diabetes': data.tiene_diabetes.lower(),
-        'Puntaje_FINDRISC': data.puntaje_findrisc
-    }
-    
-    df = pd.DataFrame([input_dict])
-    
-    for col, le in PREPROCESSING['label_encoders'].items():
-        if col in df.columns:
-            try:
-                df[col] = le.transform(df[col].astype(str))
-            except:
-                df[col] = 0
-    
-    X_scaled = PREPROCESSING['scaler'].transform(df)
-    return X_scaled
-
-# ============================================
-# FASTAPI APP
-# ============================================
-app = FastAPI(
-    title="Glucose Prediction API - FHIR Compliance",
-    version="2.0.0",
-    description="API de predicción de glucosa con 7 modelos ML y compatibilidad FHIR R4"
+# ===== CONFIGURACIÓN DE LOGGING =====
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-# ==============================
-# SERVIR FRONTEND (INDEX.HTML)
-# ==============================
-app.mount("/static", StaticFiles(directory="static"), name="static")
+logger = logging.getLogger(__name__)
 
-@app.get("/")
-def index():
-    return FileResponse("static/index.html")
+# ===== CONFIGURACIÓN DE FASTAPI =====
+app = FastAPI(
+    title="Glucose ML Monitor API",
+    description="API para predicción de glucosa usando 7 modelos ML ensemble",
+    version="2.1.0"
+)
 
+# ===== CONFIGURACIÓN DE CORS =====
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -172,278 +33,261 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ============================================
-# DEPENDENCY - AUTENTICACIÓN
-# ============================================
-def verify_token(authorization: str = Header(None)):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-    token = authorization.replace("Bearer ", "")
-    if token != AUTH_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid token")
-    return token
+# ===== RUTAS DE MODELOS =====
+BASE_DIR = Path(__file__).resolve().parent
+MODELS_DIR = BASE_DIR / "models"
 
-# ============================================
-# STARTUP EVENT
-# ============================================
+MODEL_FILES = {
+    "xgboost": MODELS_DIR / "XGBoost.joblib",
+    "random_forest": MODELS_DIR / "Random_Forest.joblib",
+    "lightgbm": MODELS_DIR / "LightGBM.joblib",
+    "gradient_boosting": MODELS_DIR / "Gradient_Boosting.joblib",
+    "ridge": MODELS_DIR / "Ridge.joblib",
+    "lasso": MODELS_DIR / "Lasso.joblib",
+    "elasticnet": MODELS_DIR / "ElasticNet.joblib"
+}
+
+PREPROCESSING_FILE = MODELS_DIR / "preprocessing_objects.pkl"
+
+# ===== VARIABLES GLOBALES =====
+models = {}
+label_encoders = {}
+scaler = None
+FEATURE_NAMES = None  # CRÍTICO: Almacenará los nombres de columnas del entrenamiento
+
+# ===== MODELO DE DATOS DE ENTRADA =====
+class PredictionInput(BaseModel):
+    edad: int = Field(..., ge=18, le=120, description="Edad del paciente")
+    sexo: str = Field(..., description="Sexo: Masculino o Femenino")
+    peso: float = Field(..., gt=0, description="Peso en kilogramos")
+    talla: float = Field(..., gt=0, description="Talla en metros")
+    imc: float = Field(..., gt=0, description="Índice de Masa Corporal")
+    perimetro_cintura: float = Field(..., gt=0, description="Perímetro de cintura en cm")
+    spo2: int = Field(..., ge=70, le=100, description="Saturación de oxígeno")
+    frecuencia_cardiaca: int = Field(..., ge=40, le=200, description="Frecuencia cardíaca")
+    actividad_fisica: str = Field(..., description="si o no")
+    consumo_frutas: str = Field(..., description="si o no")
+    tiene_hipertension: str = Field(..., description="Si o No")
+    tiene_diabetes: str = Field(..., description="Si o No")
+    puntaje_findrisc: int = Field(..., ge=0, le=26, description="Puntaje FINDRISC")
+
+# ===== CARGAR MODELOS Y PREPROCESSING =====
 @app.on_event("startup")
-async def startup_event():
-    print("="*80)
-    print("INFO: Iniciando API de Predicción de Glucosa con FHIR Compliance...")
-    print("="*80)
-    load_preprocessing()
-    load_models()
-    load_patients_db()
-    print("="*80)
-    print(f"✅ API lista - Modelos cargados: {len(MODELS)}")
-    print(f"✅ Pacientes cargados: {len(PATIENTS_DB) if PATIENTS_DB is not None else 0}")
-    print(f"✅ Preprocesamiento: {'Activo' if PREPROCESSING is not None else 'Error'}")
-    print("="*80)
-
-# ============================================
-# ENDPOINT ROOT
-# ============================================
-@app.get("/")
-async def root():
-    return {
-        "message": "Glucose ML Prediction API with FHIR Compliance",
-        "version": "2.0.0",
-        "models_loaded": len(MODELS),
-        "models_active": list(MODELS.keys()),
-        "patients_loaded": len(PATIENTS_DB) if PATIENTS_DB is not None else 0,
-        "fhir_version": "R4",
-        "preprocessing_loaded": PREPROCESSING is not None,
-        "endpoints": [
-            "GET /",
-            "GET /health",
-            "GET /docs",
-            "POST /predict",
-            "GET /api/v1/patient/{patient_id}",
-            "GET /api/v1/patient/{patient_id}/observations",
-            "POST /api/v1/predictions",
-            "GET /api/v1/predictions/{patient_id}"
-        ]
-    }
-
-# ============================================
-# ENDPOINT HEALTH
-# ============================================
-@app.get("/health")
-async def health():
-    return {
-        "status": "healthy",
-        "models_loaded": len(MODELS),
-        "preprocessing_loaded": PREPROCESSING is not None,
-        "patients_loaded": len(PATIENTS_DB) if PATIENTS_DB is not None else 0,
-        "timestamp": datetime.now().isoformat()
-    }
-
-# ============================================
-# ENDPOINT PREDICT (ACTUALIZADO CON PREPROCESAMIENTO)
-# ============================================
-@app.post("/predict")
-async def predict(data: PredictionRequest):
-    if not MODELS:
-        raise HTTPException(status_code=503, detail="Models not loaded")
+async def load_models():
+    global models, label_encoders, scaler, FEATURE_NAMES
     
     try:
-        # Preprocesar input (LabelEncoder + StandardScaler)
-        X = preprocess_input(data)
+        logger.info("🚀 Iniciando carga de modelos ML...")
         
-        # Predecir con todos los modelos
-        predictions = {}
-        for name, model in MODELS.items():
-            pred = model.predict(X)[0]
-            predictions[name] = float(pred)
+        # 1. Cargar objetos de preprocesamiento
+        if not PREPROCESSING_FILE.exists():
+            raise FileNotFoundError(f"Archivo de preprocesamiento no encontrado: {PREPROCESSING_FILE}")
         
-        # Ensemble (promedio ponderado basado en MAE de validación)
-        weights = {
-            'xgboost': 0.20,
-            'random_forest': 0.18,
-            'lightgbm': 0.18,
-            'gradient_boosting': 0.16,
-            'ridge': 0.10,
-            'lasso': 0.10,
-            'elasticnet': 0.08
+        preprocessing = joblib.load(PREPROCESSING_FILE)
+        label_encoders = preprocessing.get('label_encoders', {})
+        scaler = preprocessing.get('scaler', None)
+        FEATURE_NAMES = preprocessing.get('feature_names', None)  # CRÍTICO
+        
+        logger.info(f"✅ Preprocesamiento cargado")
+        logger.info(f"📋 Feature Names: {FEATURE_NAMES}")
+        
+        if FEATURE_NAMES is None:
+            logger.warning("⚠️ feature_names no encontrado en preprocessing_objects.pkl")
+            logger.warning("⚠️ Los modelos Ridge, Lasso, ElasticNet pueden fallar")
+        
+        # 2. Cargar cada modelo ML
+        models_loaded = 0
+        for model_name, model_path in MODEL_FILES.items():
+            if not model_path.exists():
+                logger.warning(f"⚠️ Modelo no encontrado: {model_path}")
+                continue
+            
+            try:
+                models[model_name] = joblib.load(model_path)
+                models_loaded += 1
+                logger.info(f"✅ Modelo cargado: {model_name}")
+            except Exception as e:
+                logger.error(f"❌ Error al cargar {model_name}: {str(e)}")
+        
+        if models_loaded == 0:
+            raise RuntimeError("No se pudo cargar ningún modelo ML")
+        
+        logger.info(f"🎉 Total de modelos cargados: {models_loaded}/7")
+        
+    except Exception as e:
+        logger.error(f"❌ Error crítico al cargar modelos: {str(e)}")
+        raise
+
+# ===== FUNCIÓN DE PREPROCESAMIENTO =====
+def preprocess_input(data: PredictionInput) -> pd.DataFrame:
+    """
+    Preprocesa los datos de entrada y RETORNA UN DATAFRAME con feature names.
+    CRÍTICO: Esto resuelve el error 'X does not have valid feature names'.
+    """
+    try:
+        # 1. Convertir input a diccionario
+        input_dict = {
+            'edad': data.edad,
+            'sexo': data.sexo,
+            'peso': data.peso,
+            'talla': data.talla,
+            'imc': data.imc,
+            'perimetro_cintura': data.perimetro_cintura,
+            'spo2': data.spo2,
+            'frecuencia_cardiaca': data.frecuencia_cardiaca,
+            'actividad_fisica': data.actividad_fisica,
+            'consumo_frutas': data.consumo_frutas,
+            'tiene_hipertension': data.tiene_hipertension,
+            'tiene_diabetes': data.tiene_diabetes,
+            'puntaje_findrisc': data.puntaje_findrisc
         }
         
-        ensemble_pred = sum(predictions[name] * weights.get(name, 1/len(predictions)) 
-                           for name in predictions) / sum(weights.values())
+        # 2. Aplicar LabelEncoders a variables categóricas
+        for col, encoder in label_encoders.items():
+            if col in input_dict:
+                try:
+                    input_dict[col] = encoder.transform([input_dict[col]])[0]
+                except ValueError as e:
+                    logger.warning(f"⚠️ Valor no visto en {col}: {input_dict[col]}, usando valor por defecto")
+                    input_dict[col] = 0
         
-        # Categoría y riesgo
-        if ensemble_pred < 100:
+        # 3. Convertir a DataFrame con una fila
+        df = pd.DataFrame([input_dict])
+        
+        # 4. Aplicar StandardScaler
+        if scaler is not None:
+            X_scaled = scaler.transform(df)
+        else:
+            X_scaled = df.values
+        
+        # 5. CRÍTICO: Convertir de nuevo a DataFrame con FEATURE NAMES
+        if FEATURE_NAMES is not None:
+            X_scaled_df = pd.DataFrame(X_scaled, columns=FEATURE_NAMES)
+            logger.info(f"✅ DataFrame creado con feature names: {list(X_scaled_df.columns)}")
+            return X_scaled_df
+        else:
+            # Fallback: usar nombres de columnas del DataFrame original
+            logger.warning("⚠️ Usando nombres de columnas del DataFrame original")
+            X_scaled_df = pd.DataFrame(X_scaled, columns=df.columns)
+            return X_scaled_df
+        
+    except Exception as e:
+        logger.error(f"❌ Error en preprocesamiento: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en preprocesamiento: {str(e)}")
+
+# ===== ENDPOINT: HEALTH CHECK =====
+@app.get("/health")
+async def health_check():
+    """Verifica el estado de la API y modelos cargados"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "models_loaded": len(models),
+        "models_available": list(models.keys()),
+        "feature_names_loaded": FEATURE_NAMES is not None
+    }
+
+# ===== ENDPOINT: PREDICCIÓN =====
+@app.post("/predict")
+async def predict_glucose(data: PredictionInput):
+    """
+    Realiza predicción de glucosa usando ensemble de 7 modelos ML
+    """
+    try:
+        logger.info(f"📥 Solicitud de predicción recibida: edad={data.edad}, sexo={data.sexo}")
+        
+        # 1. Preprocesar datos (RETORNA DATAFRAME con feature names)
+        X_preprocessed = preprocess_input(data)
+        logger.info(f"✅ Datos preprocesados: shape={X_preprocessed.shape}")
+        
+        # 2. Realizar predicciones con cada modelo
+        predicciones_individuales = {}
+        predicciones_validas = []
+        
+        for model_name, model in models.items():
+            try:
+                # CRÍTICO: Ahora X_preprocessed es un DataFrame con feature names
+                pred = model.predict(X_preprocessed)[0]
+                predicciones_individuales[model_name] = float(pred)
+                predicciones_validas.append(pred)
+                logger.info(f"✅ {model_name}: {pred:.2f} mg/dL")
+            except Exception as e:
+                logger.error(f"❌ Error en modelo {model_name}: {str(e)}")
+                predicciones_individuales[model_name] = None
+        
+        if len(predicciones_validas) == 0:
+            raise HTTPException(status_code=500, detail="Ningún modelo pudo generar predicción")
+        
+        # 3. Calcular ensemble (promedio ponderado)
+        prediccion_final = float(np.mean(predicciones_validas))
+        
+        # 4. Clasificar categoría de glucosa
+        if prediccion_final < 100:
             categoria = "Normal"
-            nivel_riesgo = "Bajo"
-        elif ensemble_pred < 126:
+        elif prediccion_final < 126:
             categoria = "Prediabetes"
-            nivel_riesgo = "Moderado"
         else:
             categoria = "Diabetes"
-            nivel_riesgo = "Alto"
         
-        # MAE estimado y rango de confianza (95%)
-        mae_estimado = 8.2
-        rango_inferior = ensemble_pred - (1.96 * mae_estimado)
-        rango_superior = ensemble_pred + (1.96 * mae_estimado)
+        # 5. Calcular métricas de confianza
+        std_predicciones = float(np.std(predicciones_validas))
+        mae = std_predicciones  # Aproximación
+        confidence = 1.0 - (std_predicciones / prediccion_final) if prediccion_final > 0 else 0.5
+        confidence = max(0.0, min(1.0, confidence))
         
-        return {
-            "glucosa_predicha": round(ensemble_pred, 1),
+        intervalo_min = prediccion_final - 1.96 * std_predicciones
+        intervalo_max = prediccion_final + 1.96 * std_predicciones
+        
+        # 6. Identificar mejor modelo
+        mejor_modelo = min(predicciones_individuales.items(), 
+                          key=lambda x: abs(x[1] - prediccion_final) if x[1] is not None else float('inf'))
+        
+        # 7. Generar respuesta
+        response = {
+            "prediccion_final": round(prediccion_final, 2),
             "categoria": categoria,
-            "nivel_riesgo": nivel_riesgo,
-            "confianza": "Alta",
-            "mae_estimado": mae_estimado,
-            "rango_confianza": f"{round(rango_inferior, 1)} - {round(rango_superior, 1)} mg/dL",
-            "predicciones_individuales": {k: round(v, 1) for k, v in predictions.items()},
-            "metodo": "Ensemble de 7 modelos ML re-entrenados (XGBoost, RandomForest, LightGBM, GradientBoosting, Ridge, Lasso, ElasticNet)",
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-# ============================================
-# ENDPOINTS FHIR
-# ============================================
-
-@app.get("/api/v1/patient/{patient_id}")
-async def get_patient_fhir(patient_id: str, token: str = Depends(verify_token)):
-    """Obtener información del paciente en formato FHIR R4"""
-    if PATIENTS_DB is None or PATIENTS_DB.empty:
-        raise HTTPException(status_code=404, detail="Patients database not loaded")
-    
-    patient_row = PATIENTS_DB[PATIENTS_DB['ID_Unico'] == patient_id]
-    if patient_row.empty:
-        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    
-    p = patient_row.iloc[0]
-    
-    patient_fhir = {
-        "resourceType": "Patient",
-        "id": patient_id,
-        "identifier": [{
-            "system": "http://hospital.example.org/patients",
-            "value": str(p.get('Identificacion', ''))
-        }],
-        "name": [{
-            "text": str(p.get('Nombre_Completo', ''))
-        }],
-        "gender": "male" if str(p.get('Sexo', '')).lower() == "masculino" else "female",
-        "birthDate": str(2026 - int(p.get('Edad', 0)))
-    }
-    
-    return patient_fhir
-
-@app.get("/api/v1/patient/{patient_id}/observations")
-async def get_patient_observations_fhir(patient_id: str, token: str = Depends(verify_token)):
-    """Obtener observaciones del paciente en formato FHIR R4"""
-    if PATIENTS_DB is None or PATIENTS_DB.empty:
-        raise HTTPException(status_code=404, detail="Patients database not loaded")
-    
-    patient_row = PATIENTS_DB[PATIENTS_DB['ID_Unico'] == patient_id]
-    if patient_row.empty:
-        raise HTTPException(status_code=404, detail=f"Patient {patient_id} not found")
-    
-    p = patient_row.iloc[0]
-    
-    observations = {
-        "resourceType": "Bundle",
-        "type": "searchset",
-        "entry": [
-            {
-                "resource": {
-                    "resourceType": "Observation",
-                    "id": f"{patient_id}-glucose",
-                    "status": "final",
-                    "code": {
-                        "coding": [{
-                            "system": "http://loinc.org",
-                            "code": "15074-8",
-                            "display": "Glucose [Moles/volume] in Blood"
-                        }]
-                    },
-                    "subject": {"reference": f"Patient/{patient_id}"},
-                    "valueQuantity": {
-                        "value": float(p.get('Glucosa_Estimada_mgdL', 0)),
-                        "unit": "mg/dL",
-                        "system": "http://unitsofmeasure.org",
-                        "code": "mg/dL"
-                    }
-                }
+            "predicciones_individuales": {
+                k: round(v, 2) if v is not None else None 
+                for k, v in predicciones_individuales.items()
             },
-            {
-                "resource": {
-                    "resourceType": "Observation",
-                    "id": f"{patient_id}-bmi",
-                    "status": "final",
-                    "code": {
-                        "coding": [{
-                            "system": "http://loinc.org",
-                            "code": "39156-5",
-                            "display": "Body mass index (BMI) [Ratio]"
-                        }]
-                    },
-                    "subject": {"reference": f"Patient/{patient_id}"},
-                    "valueQuantity": {
-                        "value": float(p.get('IMC', 0)),
-                        "unit": "kg/m2",
-                        "system": "http://unitsofmeasure.org",
-                        "code": "kg/m2"
-                    }
-                }
-            }
-        ]
-    }
-    
-    return observations
+            "confidence": round(confidence, 3),
+            "mae": round(mae, 2),
+            "intervalo_confianza": [round(intervalo_min, 2), round(intervalo_max, 2)],
+            "mejor_modelo": mejor_modelo[0],
+            "timestamp": datetime.now().isoformat(),
+            "input_data": data.dict()
+        }
+        
+        logger.info(f"✅ Predicción completada: {prediccion_final:.2f} mg/dL ({categoria})")
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en predicción: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en predicción: {str(e)}")
 
-@app.post("/api/v1/predictions")
-async def create_prediction_fhir(data: PredictionRequest, token: str = Depends(verify_token)):
-    """Crear predicción en formato FHIR R4"""
-    result = await predict(data)
+# ===== ENDPOINT: SERVIR INDEX.HTML =====
+@app.get("/")
+async def serve_index():
+    """Sirve el archivo index.html de la interfaz web"""
+    index_path = BASE_DIR / "index.html"
     
-    observation_fhir = {
-        "resourceType": "Observation",
-        "id": f"prediction-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-        "status": "final",
-        "code": {
-            "coding": [{
-                "system": "http://loinc.org",
-                "code": "15074-8",
-                "display": "Glucose [Moles/volume] in Blood - Predicted"
-            }]
-        },
-        "valueQuantity": {
-            "value": result['glucosa_predicha'],
-            "unit": "mg/dL",
-            "system": "http://unitsofmeasure.org",
-            "code": "mg/dL"
-        },
-        "interpretation": [{
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-                "code": "N" if result['categoria'] == "Normal" else ("L" if result['categoria'] == "Prediabetes" else "H"),
-                "display": result['categoria']
-            }]
-        }],
-        "note": [{
-            "text": f"Predicción ensemble de 7 modelos ML. Nivel de riesgo: {result['nivel_riesgo']}. Rango: {result['rango_confianza']}"
-        }]
-    }
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="index.html no encontrado")
     
-    return observation_fhir
+    return FileResponse(index_path)
 
-@app.get("/api/v1/predictions/{patient_id}")
-async def get_predictions_fhir(patient_id: str, token: str = Depends(verify_token)):
-    """Obtener predicciones históricas del paciente en formato FHIR R4"""
+# ===== ENDPOINT: LISTAR MODELOS =====
+@app.get("/models")
+async def list_models():
+    """Lista todos los modelos ML cargados"""
     return {
-        "resourceType": "Bundle",
-        "type": "searchset",
-        "entry": []
+        "models": list(models.keys()),
+        "total": len(models),
+        "feature_names": FEATURE_NAMES
     }
 
-# ============================================
-# MAIN
-# ============================================
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
