@@ -506,8 +506,22 @@
     </div>
 
     <div class="chart-container">
-        <div class="chart-title">📈 Glucosa (Últimas 24h)</div>
+        <div class="chart-title" id="glucoseChartTitle">📈 Glucosa (Historial)</div>
         <canvas id="glucoseChart"></canvas>
+        <div id="glucoseChartLegend" class="chart-legend" style="display: flex; justify-content: center; gap: 15px; margin-top: 10px; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #00FF00;"></div>
+                <span style="color: #B0B0B0;">Normal (&lt;100)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #FFD700;"></div>
+                <span style="color: #B0B0B0;">Prediabetes (100-125)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 12px; height: 12px; border-radius: 50%; background: #FF4444;"></div>
+                <span style="color: #B0B0B0;">Diabetes (&gt;126)</span>
+            </div>
+        </div>
     </div>
 
     <div class="sensor-grid">
@@ -933,42 +947,63 @@ function updateSessionDuration() {
 
 // ==================== INICIALIZAR GRÁFICAS ====================
 function initCharts() {
-    // Gráfica de Glucosa
+    // Gráfica de Glucosa - Inicializar vacía (se llenará con historial real)
     const ctxGlucose = document.getElementById('glucoseChart').getContext('2d');
     glucoseChart = new Chart(ctxGlucose, {
         type: 'line',
         data: {
-            labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '23:59'],
+            labels: [],
             datasets: [{
-                label: 'Glucosa',
-                data: [115, 118, 125, 140, 135, 130, 137],
+                label: 'Glucosa (mg/dL)',
+                data: [],
                 borderColor: '#00FF00',
                 backgroundColor: 'rgba(0, 255, 0, 0.1)',
                 tension: 0.4,
-                fill: true
+                fill: true,
+                pointRadius: 6,
+                pointBackgroundColor: [],
+                pointBorderColor: '#1C1C1C',
+                pointBorderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false }
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#2C2C2C',
+                    titleColor: '#00FF00',
+                    bodyColor: '#FFFFFF',
+                    borderColor: '#00FF00',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.raw;
+                            const categoria = value < 100 ? 'Normal' : value <= 125 ? 'Prediabetes' : 'Diabetes';
+                            return value + ' mg/dL (' + categoria + ')';
+                        }
+                    }
+                }
             },
             scales: {
                 y: {
                     beginAtZero: false,
-                    min: 80,
-                    max: 160,
-                    ticks: { color: '#B0B0B0' },
+                    min: 70,
+                    max: 200,
+                    ticks: { color: '#B0B0B0', font: { size: 10 } },
                     grid: { color: '#333333' }
                 },
                 x: {
-                    ticks: { color: '#B0B0B0' },
+                    ticks: { color: '#B0B0B0', font: { size: 10 } },
                     grid: { color: '#333333' }
                 }
             }
         }
     });
+    
+    // Cargar historial y actualizar gráfica de glucosa
+    updateGlucoseChartFromHistory();
 
     // Gráfica de Acelerómetro
     const ctxAccel = document.getElementById('accelChart').getContext('2d');
@@ -1856,17 +1891,58 @@ function saveMLEvaluation() {
     alert('✅ Evaluación guardada en historial');
 }
 
+// ==================== GRÁFICA DE GLUCOSA DINÁMICA ====================
+function updateGlucoseChartFromHistory() {
+    if (!glucoseChart) return;
+    
+    // Filtrar solo evaluaciones ML y obtener las últimas 7
+    const mlEvaluations = historyData
+        .filter(item => item.type === 'ml_evaluation')
+        .slice(-7);
+    
+    // Construir labels con hora
+    const labels = mlEvaluations.map(item => {
+        const date = new Date(item.timestamp);
+        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    });
+    
+    // Construir valores de glucosa
+    const dataValues = mlEvaluations.map(item => item.data.glucosa_predicha);
+    
+    // Construir colores por categoría
+    const pointColors = dataValues.map(v => 
+        v < 100 ? '#00FF00' : v <= 125 ? '#FFD700' : '#FF4444'
+    );
+    
+    // Si no hay datos, mostrar mensaje
+    if (dataValues.length === 0) {
+        glucoseChart.data.labels = ['Sin datos'];
+        glucoseChart.data.datasets[0].data = [0];
+        glucoseChart.data.datasets[0].pointBackgroundColor = ['#666'];
+        document.getElementById('glucoseChartTitle').textContent = '📈 Glucosa (Sin predicciones)';
+    } else {
+        glucoseChart.data.labels = labels;
+        glucoseChart.data.datasets[0].data = dataValues;
+        glucoseChart.data.datasets[0].pointBackgroundColor = pointColors;
+        document.getElementById('glucoseChartTitle').textContent = `📈 Glucosa (${dataValues.length} predicciones)`;
+    }
+    
+    glucoseChart.update();
+}
+
 // ==================== HISTORIAL ====================
 function loadHistoryFromStorage() {
     const stored = localStorage.getItem('glucose_history');
     if (stored) {
         historyData = JSON.parse(stored);
         updateHistoryDisplay();
+        updateGlucoseChartFromHistory();
     }
 }
 
 function saveHistoryToStorage() {
     localStorage.setItem('glucose_history', JSON.stringify(historyData));
+    updateGlucoseChartFromHistory();
 }
 
 function updateHistoryDisplay() {
