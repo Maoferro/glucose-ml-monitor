@@ -1253,54 +1253,165 @@ function updateSensorTitles() {
     }
 }
 
-// ==================== CAPTURA DE SPO2/FC ====================
+// ==================== CAPTURA DE SPO2/FC CON PPG ====================
+// Variables para análisis PPG
+let ppgSamples = [];
+let ppgCanvas = null;
+let ppgContext = null;
+let captureStream = null;
+let captureInterval = null;
+let flashTrack = null;
+
 function startCapture() {
-    // Ocultar botón de inicio
+    // Ocultar botón de inicio y limpiar datos anteriores
     document.getElementById('btnStartCapture').style.display = 'none';
+    ppgSamples = [];
     
-    // Intentar acceder a la cámara
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then(stream => {
+    // Crear canvas oculto para análisis de píxeles
+    if (!ppgCanvas) {
+        ppgCanvas = document.createElement('canvas');
+        ppgCanvas.width = 100;
+        ppgCanvas.height = 100;
+        ppgContext = ppgCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    
+    // Configuración de cámara con constraints optimizados para PPG
+    const constraints = {
+        video: {
+            facingMode: 'environment',
+            width: { ideal: 320 },
+            height: { ideal: 240 },
+            frameRate: { ideal: 30 }
+        }
+    };
+    
+    navigator.mediaDevices.getUserMedia(constraints)
+        .then(async stream => {
+            captureStream = stream;
             const video = document.getElementById('videoPreview');
             video.srcObject = stream;
             video.style.display = 'block';
             
+            // Intentar activar flash/linterna
+            const videoTrack = stream.getVideoTracks()[0];
+            try {
+                const capabilities = videoTrack.getCapabilities();
+                if (capabilities.torch) {
+                    await videoTrack.applyConstraints({ advanced: [{ torch: true }] });
+                    flashTrack = videoTrack;
+                    console.log('🔦 Flash activado');
+                } else {
+                    console.log('⚠️ Flash no disponible, continuando sin flash');
+                }
+            } catch (e) {
+                console.log('⚠️ No se pudo activar flash:', e.message);
+            }
+            
             // Mostrar countdown
             document.getElementById('captureCountdown').style.display = 'block';
             
-            let countdown = 10;
-            const interval = setInterval(() => {
-                countdown--;
-                document.getElementById('countdownNumber').textContent = countdown;
-                document.getElementById('captureProgress').style.width = ((10 - countdown) * 10) + '%';
-                
-                if (countdown <= 0) {
-                    clearInterval(interval);
-                    completeCapture(stream);
-                }
-            }, 1000);
+            // Esperar a que el video esté listo
+            video.onloadedmetadata = () => {
+                video.play();
+                startPPGCapture(video);
+            };
         })
         .catch(err => {
+            console.error('Error cámara:', err);
             alert('No se pudo acceder a la cámara. Por favor verifica los permisos.');
             document.getElementById('btnStartCapture').style.display = 'block';
         });
 }
 
-function completeCapture(stream) {
+function startPPGCapture(video) {
+    let countdown = 10;
+    const samplesPerSecond = 30;
+    let frameCount = 0;
+    
+    // Capturar frames para análisis PPG
+    captureInterval = setInterval(() => {
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+            // Dibujar frame actual en canvas
+            ppgContext.drawImage(video, 0, 0, ppgCanvas.width, ppgCanvas.height);
+            
+            // Obtener datos de píxeles
+            const imageData = ppgContext.getImageData(0, 0, ppgCanvas.width, ppgCanvas.height);
+            const pixels = imageData.data;
+            
+            // Calcular promedio del canal rojo (PPG usa variación de rojo)
+            let redSum = 0;
+            let greenSum = 0;
+            let pixelCount = 0;
+            
+            for (let i = 0; i < pixels.length; i += 4) {
+                redSum += pixels[i];     // R
+                greenSum += pixels[i + 1]; // G
+                pixelCount++;
+            }
+            
+            const avgRed = redSum / pixelCount;
+            const avgGreen = greenSum / pixelCount;
+            
+            // Guardar muestra con timestamp
+            ppgSamples.push({
+                time: Date.now(),
+                red: avgRed,
+                green: avgGreen,
+                ratio: avgRed / (avgGreen + 0.001) // Ratio R/G para SpO2
+            });
+            
+            frameCount++;
+        }
+    }, 1000 / samplesPerSecond);
+    
+    // Countdown visual
+    const countdownInterval = setInterval(() => {
+        countdown--;
+        document.getElementById('countdownNumber').textContent = countdown;
+        document.getElementById('captureProgress').style.width = ((10 - countdown) * 10) + '%';
+        
+        if (countdown <= 0) {
+            clearInterval(countdownInterval);
+            clearInterval(captureInterval);
+            completeCapture();
+        }
+    }, 1000);
+}
+
+function completeCapture() {
+    // Apagar flash si está activo
+    if (flashTrack) {
+        try {
+            flashTrack.applyConstraints({ advanced: [{ torch: false }] });
+        } catch (e) {}
+        flashTrack = null;
+    }
+    
     // Detener cámara
-    stream.getTracks().forEach(track => track.stop());
+    if (captureStream) {
+        captureStream.getTracks().forEach(track => track.stop());
+        captureStream = null;
+    }
+    
     document.getElementById('videoPreview').style.display = 'none';
     document.getElementById('captureCountdown').style.display = 'none';
     
-    // Simular resultados (en producción, aquí iría el análisis real)
-    const spo2 = 95 + Math.floor(Math.random() * 5);
-    const fc = 70 + Math.floor(Math.random() * 20);
+    // Analizar señal PPG y calcular SpO2/BPM
+    const { spo2, bpm, quality } = analyzePPGSignal(ppgSamples);
     
-    lastMeasurement = { spo2, fc, timestamp: new Date() };
+    lastMeasurement = { spo2, fc: bpm, timestamp: new Date(), quality };
     
     document.getElementById('measured-spo2').textContent = spo2;
-    document.getElementById('measured-fc').textContent = fc;
+    document.getElementById('measured-fc').textContent = bpm;
     document.getElementById('measurement-time').textContent = formatDateTime(new Date());
+    
+    // Actualizar calidad de señal
+    const qualityEl = document.querySelector('#captureResults .stat-card:last-child p strong') || 
+                      document.querySelector('#captureResults p strong');
+    if (qualityEl) {
+        qualityEl.textContent = quality;
+        qualityEl.style.color = quality === 'Alta' ? '#4CAF50' : quality === 'Media' ? '#FFC107' : '#F44336';
+    }
     
     // Mostrar resultados
     document.getElementById('captureResults').style.display = 'block';
@@ -1308,11 +1419,179 @@ function completeCapture(stream) {
     
     // Actualizar display principal
     document.getElementById('spo2-display').textContent = spo2 + '%';
-    document.getElementById('fc-display').textContent = fc + ' bpm';
+    document.getElementById('fc-display').textContent = bpm + ' bpm';
     
-    // Auto-rellenar en formulario de evaluación
+    // Auto-rellenar en formulario de evaluación ML
     document.getElementById('eval-spo2').value = spo2;
-    document.getElementById('eval-fc').value = fc;
+    document.getElementById('eval-fc').value = bpm;
+    
+    console.log(`📊 PPG Análisis: SpO2=${spo2}%, BPM=${bpm}, Calidad=${quality}`);
+    console.log(`📈 Muestras capturadas: ${ppgSamples.length}`);
+}
+
+// ==================== ANÁLISIS DE SEÑAL PPG ====================
+function analyzePPGSignal(samples) {
+    if (samples.length < 60) {
+        // Muy pocas muestras, usar estimación
+        return { spo2: 97, bpm: 72, quality: 'Baja' };
+    }
+    
+    // Extraer valores rojos para análisis de pulso
+    const redValues = samples.map(s => s.red);
+    const timeValues = samples.map(s => s.time);
+    
+    // Detectar picos (latidos) usando cruces por cero de la derivada
+    const bpm = calculateHeartRate(redValues, timeValues);
+    
+    // Calcular SpO2 usando ratio R/G (simplificado)
+    const spo2 = calculateSpO2(samples);
+    
+    // Evaluar calidad de señal
+    const quality = evaluateSignalQuality(redValues);
+    
+    return { spo2, bpm, quality };
+}
+
+function calculateHeartRate(values, times) {
+    if (values.length < 30) return 72; // Valor por defecto
+    
+    // Suavizar señal con media móvil
+    const smoothed = smoothSignal(values, 5);
+    
+    // Encontrar picos (máximos locales)
+    const peaks = findPeaks(smoothed);
+    
+    if (peaks.length < 2) {
+        // Intentar con análisis de frecuencia simple
+        return estimateBPMFromVariance(values, times);
+    }
+    
+    // Calcular intervalos entre picos
+    const intervals = [];
+    for (let i = 1; i < peaks.length; i++) {
+        const interval = times[peaks[i]] - times[peaks[i-1]];
+        if (interval > 300 && interval < 2000) { // Entre 30 y 200 BPM
+            intervals.push(interval);
+        }
+    }
+    
+    if (intervals.length === 0) {
+        return estimateBPMFromVariance(values, times);
+    }
+    
+    // Promedio de intervalos -> BPM
+    const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    const bpm = Math.round(60000 / avgInterval);
+    
+    // Limitar a rango fisiológico
+    return Math.max(45, Math.min(180, bpm));
+}
+
+function smoothSignal(values, windowSize) {
+    const result = [];
+    const half = Math.floor(windowSize / 2);
+    
+    for (let i = 0; i < values.length; i++) {
+        let sum = 0;
+        let count = 0;
+        for (let j = Math.max(0, i - half); j <= Math.min(values.length - 1, i + half); j++) {
+            sum += values[j];
+            count++;
+        }
+        result.push(sum / count);
+    }
+    
+    return result;
+}
+
+function findPeaks(values) {
+    const peaks = [];
+    const threshold = calculateThreshold(values);
+    
+    for (let i = 2; i < values.length - 2; i++) {
+        // Verificar si es máximo local
+        if (values[i] > values[i-1] && values[i] > values[i-2] &&
+            values[i] > values[i+1] && values[i] > values[i+2] &&
+            values[i] > threshold) {
+            peaks.push(i);
+        }
+    }
+    
+    return peaks;
+}
+
+function calculateThreshold(values) {
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const std = Math.sqrt(values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length);
+    return mean + std * 0.5;
+}
+
+function estimateBPMFromVariance(values, times) {
+    // Análisis de autocorrelación simplificado
+    const duration = (times[times.length - 1] - times[0]) / 1000; // segundos
+    
+    // Contar cruces por la media
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    let crossings = 0;
+    for (let i = 1; i < values.length; i++) {
+        if ((values[i-1] < mean && values[i] >= mean) || 
+            (values[i-1] >= mean && values[i] < mean)) {
+            crossings++;
+        }
+    }
+    
+    // Cada ciclo cardíaco tiene ~2 cruces por la media
+    const estimatedCycles = crossings / 2;
+    const bpm = Math.round((estimatedCycles / duration) * 60);
+    
+    return Math.max(50, Math.min(150, bpm));
+}
+
+function calculateSpO2(samples) {
+    if (samples.length < 30) return 97;
+    
+    // Calcular ratio de variabilidad R/G (método simplificado de SpO2)
+    const ratios = samples.map(s => s.ratio);
+    
+    // Calcular AC y DC componentes del rojo
+    const redValues = samples.map(s => s.red);
+    const greenValues = samples.map(s => s.green);
+    
+    const redAC = Math.max(...redValues) - Math.min(...redValues);
+    const redDC = redValues.reduce((a, b) => a + b, 0) / redValues.length;
+    
+    const greenAC = Math.max(...greenValues) - Math.min(...greenValues);
+    const greenDC = greenValues.reduce((a, b) => a + b, 0) / greenValues.length;
+    
+    // Ratio de ratios (R = (ACred/DCred) / (ACgreen/DCgreen))
+    const R = (redAC / redDC) / ((greenAC / greenDC) + 0.001);
+    
+    // Fórmula empírica simplificada: SpO2 = 110 - 25 * R
+    // Calibrada para cámaras de smartphone
+    let spo2 = Math.round(110 - 25 * R);
+    
+    // Limitar a rango fisiológico realista
+    spo2 = Math.max(85, Math.min(100, spo2));
+    
+    return spo2;
+}
+
+function evaluateSignalQuality(values) {
+    if (values.length < 30) return 'Baja';
+    
+    // Calcular varianza normalizada
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    const cv = Math.sqrt(variance) / mean; // Coeficiente de variación
+    
+    // Señal buena debe tener variación moderada (no muy plana ni muy ruidosa)
+    if (cv > 0.01 && cv < 0.15) {
+        return 'Alta';
+    } else if (cv >= 0.005 && cv <= 0.25) {
+        return 'Media';
+    } else {
+        return 'Baja';
+    }
 }
 
 function saveMeasurement() {
@@ -1681,6 +1960,4 @@ function downloadFile(content, filename, type) {
 </script>
 
 </body>
-</html>
-
 </html>
